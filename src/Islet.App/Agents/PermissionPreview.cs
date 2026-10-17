@@ -21,6 +21,30 @@ public readonly record struct PermissionPreview(string Line, string Full)
         return new PermissionPreview(Truncate(line, MaxLineChars), Truncate(full, MaxFullChars));
     }
 
+    /// <summary>The question texts from an <c>AskUserQuestion</c> input, one per paragraph. Null if there are none.</summary>
+    public static string? QuestionText(JsonElement? input)
+    {
+        if (input is not { ValueKind: JsonValueKind.Object } value ||
+            !value.TryGetProperty("questions", out JsonElement questions) ||
+            questions.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var lines = new List<string>();
+        foreach (JsonElement item in questions.EnumerateArray())
+        {
+            if (GetString(item, "question") is { Length: > 0 } text)
+            {
+                lines.Add(text);
+            }
+        }
+
+        return lines.Count == 0
+            ? null
+            : Truncate(string.Join(Environment.NewLine + Environment.NewLine, lines), MaxFullChars);
+    }
+
     /// <summary>Last segment of the working directory: the repo or folder name.</summary>
     public static string RepoName(string? cwd)
     {
@@ -49,7 +73,7 @@ public readonly record struct PermissionPreview(string Line, string Full)
     };
 
     private static string? GetString(JsonElement input, string property) =>
-        input.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String
+        input.ValueKind == JsonValueKind.Object && input.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
 

@@ -75,7 +75,8 @@ public sealed class PermissionQueueViewModel : ObservableObject
 
     private bool ResolveCurrent(string decision, string? message)
     {
-        if (Current is not { } request || !AcceptsInput)
+        // Questions are never answered from here, whatever the key or click.
+        if (Current is not { IsInteractive: true } request || !AcceptsInput)
         {
             return false;
         }

@@ -2,6 +2,8 @@
 using System.Windows.Threading;
 using Islet.App.Agents;
 using Islet.App.Media;
+using Islet.App.Notifications;
+using Islet.App.Timers;
 using Islet.App.ViewModels;
 
 namespace Islet.App;
@@ -15,6 +17,8 @@ public partial class App : Application
     private PipeServer? _pipeServer;
     private PermissionQueueViewModel? _permissions;
     private AgentSessionsViewModel? _sessions;
+    private NotificationsViewModel? _notifications;
+    private ToastBannerSource? _toasts;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -43,13 +47,19 @@ public partial class App : Application
 
         _permissions = new PermissionQueueViewModel();
         _sessions = new AgentSessionsViewModel();
-        _overlay = new OverlayWindow(new OverlayViewModel(mediaViewModel, _permissions, _sessions));
+        _notifications = new NotificationsViewModel();
+        var timers = new TimersViewModel(store: new FileAlarmStore());
+        _overlay = new OverlayWindow(
+            new OverlayViewModel(mediaViewModel, _permissions, _sessions, timers, _notifications));
         _overlay.Show();
 
         _ = StartMediaAsync();
 
         _pipeServer = new PipeServer(IsletInfo.PipeName, new AgentHub(Dispatcher, _permissions, _sessions));
         _pipeServer.Start();
+
+        _toasts = new ToastBannerSource(item => Dispatcher.InvokeAsync(() => _notifications.Enqueue(item)));
+        _toasts.Start();
 
         if (e.Args.Contains("--demo", StringComparer.OrdinalIgnoreCase))
         {
@@ -61,6 +71,7 @@ public partial class App : Application
     {
         // Waiting agents fall back to their own terminal prompt.
         _permissions?.CancelAll();
+        _toasts?.Dispose();
         _pipeServer?.Dispose();
         _media?.Dispose();
 

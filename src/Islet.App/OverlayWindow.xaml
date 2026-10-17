@@ -5,7 +5,7 @@
         xmlns:ui="clr-namespace:Islet.App.Ui"
         Title="{x:Static local:IsletInfo.Name}"
         Width="496"
-        Height="150"
+        Height="100"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="{x:Null}"
@@ -17,7 +17,7 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display"
-        FontFamily="Segoe UI Variable Text, Segoe UI">
+        FontFamily="pack://application:,,,/Fonts/#Overpass Mono, Cascadia Mono, Consolas">
 
     <!--
       The window is fixed at the size of the largest view plus shadow room; the
@@ -26,6 +26,7 @@
       top edge sits flush with the top of the screen.
     -->
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <SolidColorBrush x:Key="PillBackground" Color="#F00D0D11" />
         <Color x:Key="PillBorderColor">#1FFFFFFF</Color>
         <Color x:Key="PulseColor">#FFF5A524</Color>
@@ -34,18 +35,17 @@
         <SolidColorBrush x:Key="TextTertiary" Color="#66FFFFFF" />
         <SolidColorBrush x:Key="Accent" Color="#7DD3FC" />
         <SolidColorBrush x:Key="AgentClaude" Color="#E8A27C" />
-        <SolidColorBrush x:Key="IdleDot" Color="#59FFFFFF" />
-        <SolidColorBrush x:Key="WaitingDot" Color="#F5A524" />
-        <SolidColorBrush x:Key="DoneDot" Color="#4ADE80" />
+        <SolidColorBrush x:Key="IdleLine" Color="#EF4444" />
+        <SolidColorBrush x:Key="AlarmAmber" Color="#F5A524" />
         <SolidColorBrush x:Key="ArtPlaceholder" Color="#1AFFFFFF" />
         <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
-        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
+        <FontFamily x:Key="MonoFont">pack://application:,,,/Fonts/#Overpass Mono, Cascadia Mono, Consolas</FontFamily>
 
         <!-- Flat rounded button; the island never takes focus, so no focus visuals. -->
         <Style x:Key="IslandButton" TargetType="Button">
             <Setter Property="Background" Value="#1FFFFFFF" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Padding" Value="14,0" />
             <Setter Property="Height" Value="26" />
@@ -74,6 +74,15 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- Small preset button for the alarm row. -->
+        <Style x:Key="PresetButton" TargetType="Button" BasedOn="{StaticResource IslandButton}">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Width" Value="38" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Margin" Value="0,0,4,0" />
         </Style>
 
         <Style x:Key="AllowButton" TargetType="Button" BasedOn="{StaticResource IslandButton}">
@@ -115,9 +124,9 @@
             </ui:TrapezoidBorder.Effect>
 
             <Grid>
-                <!-- Idle: barely there, just a dot. -->
+                <!-- Idle: a short red line through the middle. -->
                 <Grid x:Name="IdleContent">
-                    <Ellipse Width="5" Height="5" Fill="{StaticResource IdleDot}" />
+                    <Rectangle Width="72" Height="2" RadiusX="1" RadiusY="1" Fill="{StaticResource IdleLine}" />
                 </Grid>
 
                 <!-- Media, compact: art, title · artist, play state. -->
@@ -139,7 +148,7 @@
                         <Image Source="{Binding Media.Art}" Stretch="UniformToFill" />
                     </Border>
                     <TextBlock Grid.Column="1" Margin="9,0,10,0" VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" FontSize="12">
+                               TextTrimming="CharacterEllipsis" FontSize="11">
                         <Run Text="{Binding Media.Title, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
                         <Run Text="  " />
                         <Run Text="{Binding Media.Artist, Mode=OneWay}" Foreground="{StaticResource TextTertiary}" />
@@ -162,158 +171,298 @@
                 <!-- Agent, compact: agent · repo, and what it is doing. -->
                 <Grid x:Name="AgentCompactContent" Margin="26,0" Visibility="Collapsed" DataContext="{Binding Agents}">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Ellipse Width="7" Height="7" VerticalAlignment="Center">
-                        <Ellipse.Style>
-                            <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{StaticResource Accent}" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Current.State}" Value="Waiting">
-                                        <Setter Property="Fill" Value="{StaticResource WaitingDot}" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Current.State}" Value="Done">
-                                        <Setter Property="Fill" Value="{StaticResource DoneDot}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Ellipse.Style>
-                    </Ellipse>
-                    <TextBlock Grid.Column="1" Margin="9,0,10,0" VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" FontSize="12">
+                    <TextBlock Margin="0,0,10,0" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" FontSize="11">
                         <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AgentClaude}" />
                         <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
                         <Run Text="{Binding Current.Repo, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
                     </TextBlock>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Current.Status}" FontSize="11" Foreground="{StaticResource TextSecondary}"
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Current.Status}" FontSize="10" Foreground="{StaticResource TextSecondary}"
                                    MaxWidth="120" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding MoreBadge}" FontSize="10" FontWeight="SemiBold" Margin="6,0,0,0"
+                        <TextBlock Text="{Binding MoreBadge}" FontSize="9" FontWeight="SemiBold" Margin="6,0,0,0"
                                    Foreground="{StaticResource TextTertiary}" />
                     </StackPanel>
                 </Grid>
 
-                <!-- Media, expanded: bigger art plus transport controls. -->
-                <Grid x:Name="MediaExpandedContent" Margin="36,10,36,12" Visibility="Collapsed">
+                <!-- Media, expanded: art, title / artist, transport controls on one row. -->
+                <Grid x:Name="MediaExpandedContent" Margin="36,7,36,9" Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Border Width="64" Height="64" CornerRadius="8" VerticalAlignment="Center"
+                    <Border Width="40" Height="40" CornerRadius="6" VerticalAlignment="Center"
                             Background="{StaticResource ArtPlaceholder}">
                         <Border.OpacityMask>
                             <VisualBrush>
                                 <VisualBrush.Visual>
-                                    <Border Width="64" Height="64" CornerRadius="8" Background="Black" />
+                                    <Border Width="40" Height="40" CornerRadius="6" Background="Black" />
                                 </VisualBrush.Visual>
                             </VisualBrush>
                         </Border.OpacityMask>
                         <Image Source="{Binding Media.Art}" Stretch="UniformToFill" />
                     </Border>
-                    <Grid Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Text="{Binding Media.Title}" FontSize="14" FontWeight="SemiBold"
+                    <StackPanel Grid.Column="1" Margin="11,0,8,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Media.Title}" FontSize="12" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Row="1" Text="{Binding Media.Artist}" FontSize="12" Margin="0,1,0,0"
+                        <TextBlock Text="{Binding Media.Artist}" FontSize="10" Margin="0,1,0,0"
                                    Foreground="{StaticResource TextSecondary}" TextTrimming="CharacterEllipsis" />
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="-6,4,0,0">
-                            <Button x:Name="PreviousButton" Style="{StaticResource IconButton}" Content="&#xE892;"
-                                    IsEnabled="{Binding Media.CanPrevious}" Click="OnPreviousClick" />
-                            <Button x:Name="PlayPauseButton" IsEnabled="{Binding Media.CanPlayPause}" Click="OnPlayPauseClick">
-                                <Button.Style>
-                                    <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
-                                        <Setter Property="Content" Value="&#xE768;" />
-                                        <Setter Property="FontSize" Value="16" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Media.IsPlaying}" Value="True">
-                                                <Setter Property="Content" Value="&#xE769;" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Button.Style>
-                            </Button>
-                            <Button x:Name="NextButton" Style="{StaticResource IconButton}" Content="&#xE893;"
-                                    IsEnabled="{Binding Media.CanNext}" Click="OnNextClick" />
-                        </StackPanel>
-                    </Grid>
-                </Grid>
-
-                <!-- Permission card: agent, repo, tool, one-line preview, Allow / Deny. -->
-                <Grid x:Name="PermissionContent" Margin="42,9,42,12" Visibility="Collapsed"
-                      DataContext="{Binding Permissions}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
-                            <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AgentClaude}" />
-                            <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
-                            <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
-                        </TextBlock>
-                        <Border Grid.Column="1" CornerRadius="7" Padding="6,0" Height="14" Background="#33FFFFFF"
-                                VerticalAlignment="Center">
-                            <Border.Style>
-                                <Style TargetType="Border">
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="PreviousButton" Style="{StaticResource IconButton}" Content="&#xE892;"
+                                IsEnabled="{Binding Media.CanPrevious}" Click="OnPreviousClick" />
+                        <Button x:Name="PlayPauseButton" IsEnabled="{Binding Media.CanPlayPause}" Click="OnPlayPauseClick">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                    <Setter Property="Content" Value="&#xE768;" />
+                                    <Setter Property="FontSize" Value="16" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding MoreBadge}" Value="{x:Null}">
-                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        <DataTrigger Binding="{Binding Media.IsPlaying}" Value="True">
+                                            <Setter Property="Content" Value="&#xE769;" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </Border.Style>
-                            <TextBlock Text="{Binding MoreBadge}" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
-                        </Border>
-                    </Grid>
+                            </Button.Style>
+                        </Button>
+                        <Button x:Name="NextButton" Style="{StaticResource IconButton}" Content="&#xE893;"
+                                IsEnabled="{Binding Media.CanNext}" Click="OnNextClick" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE916;" Margin="6,0,0,0"
+                                ToolTip="Stopwatch and alarms" Click="OnShowTimersClick" />
+                    </StackPanel>
+                </Grid>
 
-                    <TextBlock Grid.Row="1" Margin="0,5,0,0" FontSize="13" FontWeight="SemiBold"
-                               Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis">
-                        <Run Text="{Binding Current.Tool, Mode=OneWay}" />
-                    </TextBlock>
+                <!-- Timers, compact: stopwatch on the left, next alarm on the right. -->
+                <Grid x:Name="TimersCompactContent" Margin="26,0" Visibility="Collapsed" DataContext="{Binding Timers}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding Stopwatch.HasTime, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="&#xE916;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                   Foreground="{StaticResource Accent}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Stopwatch.Display}" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
+                                   VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Stopwatch.IsRunning}" Value="False">
+                                            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding HasAlarmSoon, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="&#xE121;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                   Foreground="{StaticResource AlarmAmber}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Alarms.NextText}" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
 
-                    <TextBlock Grid.Row="2" Margin="0,2,0,0" FontSize="12"
-                               FontFamily="{StaticResource MonoFont}"
-                               Foreground="{StaticResource TextSecondary}"
-                               Background="Transparent"
-                               Text="{Binding Current.Preview}"
-                               TextTrimming="CharacterEllipsis"
-                               ToolTipService.InitialShowDelay="350"
-                               ToolTipService.ShowDuration="60000">
-                        <TextBlock.ToolTip>
-                            <ToolTip>
-                                <TextBlock Text="{Binding Current.FullText}" TextWrapping="Wrap"
-                                           FontFamily="{StaticResource MonoFont}" FontSize="12" />
-                            </ToolTip>
-                        </TextBlock.ToolTip>
-                    </TextBlock>
+                <!-- Timers, expanded: stopwatch controls and alarm presets. -->
+                <Grid x:Name="TimersExpandedContent" Margin="36,7,36,9" Visibility="Collapsed" DataContext="{Binding Timers}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="STOPWATCH" FontSize="9" Foreground="{StaticResource TextTertiary}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock Text="{Binding Stopwatch.Display}" FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" MinWidth="76" />
+                            <Button Style="{StaticResource IconButton}" Width="26" Height="26" Margin="6,0,0,0"
+                                    Click="OnStopwatchToggleClick" ToolTip="Start / pause (Ctrl+Alt+S)">
+                                <Button.Content>
+                                    <TextBlock FontFamily="{StaticResource IconFont}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="&#xE768;" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Stopwatch.IsRunning}" Value="True">
+                                                        <Setter Property="Text" Value="&#xE769;" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Button.Content>
+                            </Button>
+                            <Button Style="{StaticResource IconButton}" Width="26" Height="26" Content="&#xE72C;"
+                                    IsEnabled="{Binding Stopwatch.HasTime}" Click="OnStopwatchResetClick"
+                                    ToolTip="Reset (Ctrl+Alt+R)" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                        <TextBlock FontSize="9" Foreground="{StaticResource TextTertiary}">
+                            <Run Text="ALARM IN" />
+                            <Run Text="{Binding Alarms.NextText, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" FontWeight="SemiBold" />
+                        </TextBlock>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <Button Style="{StaticResource PresetButton}" Content="+5" Click="OnAddAlarmClick" Tag="5" />
+                            <Button Style="{StaticResource PresetButton}" Content="+15" Click="OnAddAlarmClick" Tag="15" />
+                            <Button Style="{StaticResource PresetButton}" Content="+30" Click="OnAddAlarmClick" Tag="30" />
+                            <Button Style="{StaticResource PresetButton}" Content="+60" Click="OnAddAlarmClick" Tag="60" />
+                            <Button Style="{StaticResource IconButton}" Width="24" Height="24" Content="&#xE711;" FontSize="11"
+                                    IsEnabled="{Binding Alarms.HasPending}" Click="OnClearAlarmsClick"
+                                    ToolTip="Clear alarms (Ctrl+Alt+D)" />
+                        </StackPanel>
+                    </StackPanel>
+                    <Button Grid.Column="3" Style="{StaticResource IconButton}" Width="26" Height="26" Margin="8,0,0,0"
+                            Content="&#xE8D6;" Click="OnShowMediaClick" ToolTip="Back to music"
+                            DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"
+                            Visibility="{Binding Media.HasSession, Converter={StaticResource BoolToVis}}" />
+                </Grid>
 
-                    <Grid Grid.Row="3" VerticalAlignment="Bottom">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock FontSize="10" Foreground="{StaticResource TextTertiary}" VerticalAlignment="Center"
-                                   Text="Enter allow · Esc deny" />
-                        <Button Grid.Column="1" x:Name="DenyButton" Style="{StaticResource IslandButton}"
-                                Content="Deny" Click="OnDenyClick" />
-                        <Button Grid.Column="2" x:Name="AllowButton" Style="{StaticResource AllowButton}"
-                                Margin="8,0,0,0" Content="Allow" Click="OnAllowClick" />
-                    </Grid>
+                <!-- Alarm ringing: dismiss or snooze. -->
+                <Grid x:Name="AlertContent" Margin="42,8,42,10" Visibility="Collapsed" DataContext="{Binding Timers.Alarms}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="&#xE121;" FontFamily="{StaticResource IconFont}" FontSize="11"
+                                   Foreground="{StaticResource AlarmAmber}" />
+                        <TextBlock Margin="0,3,0,0" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis">
+                            <Run Text="Alarm" />
+                            <Run Text="{Binding RingingAt, Mode=OneWay}" FontWeight="Normal" Foreground="{StaticResource TextSecondary}" />
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource IslandButton}" Content="Snooze 5m" Click="OnSnoozeClick" />
+                            <Button Style="{StaticResource AllowButton}" Margin="8,0,0,0" Content="Dismiss" Click="OnDismissAlarmClick" />
+                        </StackPanel>
+                        <TextBlock FontSize="9" Margin="0,3,0,0" HorizontalAlignment="Right"
+                                   Foreground="{StaticResource TextTertiary}" Text="Ctrl+Alt+D dismiss" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Notification: a Windows toast, shown for a few seconds. Click to dismiss. -->
+                <Grid x:Name="NotificationContent" Margin="42,8,42,10" Visibility="Collapsed"
+                      DataContext="{Binding Notifications}" Background="Transparent" MouseLeftButtonUp="OnNotificationClick"
+                      Cursor="Hand">
+                    <StackPanel VerticalAlignment="Center">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Current.App}" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Accent}" TextTrimming="CharacterEllipsis" />
+                            <Border Grid.Column="1" CornerRadius="7" Padding="6,0" Height="14" Margin="6,0,0,0"
+                                    Background="#33FFFFFF" VerticalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding MoreBadge}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding MoreBadge}" FontSize="9" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                        <TextBlock Margin="0,4,0,0" FontSize="11" TextTrimming="CharacterEllipsis">
+                            <Run Text="{Binding Current.Title, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
+                            <Run Text="  " />
+                            <Run Text="{Binding Current.Body, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
+                            <TextBlock.ToolTip>
+                                <ToolTip>
+                                    <TextBlock TextWrapping="Wrap">
+                                        <Run Text="{Binding Current.Title, Mode=OneWay}" FontWeight="SemiBold" />
+                                        <LineBreak />
+                                        <Run Text="{Binding Current.Body, Mode=OneWay}" />
+                                    </TextBlock>
+                                </ToolTip>
+                            </TextBlock.ToolTip>
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Permission card: details on the left, Allow / Deny on the right. -->
+                <Grid x:Name="PermissionContent" Margin="42,8,42,10" Visibility="Collapsed"
+                      DataContext="{Binding Permissions}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock FontSize="10" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AgentClaude}" />
+                                <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
+                                <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
+                            </TextBlock>
+                            <Border Grid.Column="1" CornerRadius="7" Padding="6,0" Height="14" Margin="6,0,0,0"
+                                    Background="#33FFFFFF" VerticalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding MoreBadge}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding MoreBadge}" FontSize="9" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+
+                        <TextBlock Margin="0,4,0,0" FontSize="11" TextTrimming="CharacterEllipsis"
+                                   Background="Transparent"
+                                   ToolTipService.InitialShowDelay="350"
+                                   ToolTipService.ShowDuration="60000">
+                            <Run Text="{Binding Current.Headline, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
+                            <Run Text="  " />
+                            <Run Text="{Binding Current.Preview, Mode=OneWay}" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource TextSecondary}" />
+                            <TextBlock.ToolTip>
+                                <ToolTip>
+                                    <TextBlock Text="{Binding Current.FullText}" TextWrapping="Wrap"
+                                               FontFamily="{StaticResource MonoFont}" FontSize="11" />
+                                </ToolTip>
+                            </TextBlock.ToolTip>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Current.IsInteractive}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="DenyButton" Style="{StaticResource IslandButton}"
+                                    Content="Deny" Click="OnDenyClick" />
+                            <Button x:Name="AllowButton" Style="{StaticResource AllowButton}"
+                                    Margin="8,0,0,0" Content="Allow" Click="OnAllowClick" />
+                        </StackPanel>
+                        <TextBlock FontSize="9" Margin="0,3,0,0" HorizontalAlignment="Right"
+                                   Foreground="{StaticResource TextTertiary}" Text="Enter allow · Esc deny" />
+                    </StackPanel>
                 </Grid>
             </Grid>
         </ui:TrapezoidBorder>

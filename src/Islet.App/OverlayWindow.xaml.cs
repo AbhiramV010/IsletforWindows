@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Islet.App.Interop;
+using Islet.App.Notifications;
 using Islet.App.Ui;
 using Islet.App.ViewModels;
 using Islet.Hook.Protocol;
@@ -34,6 +35,14 @@ public partial class OverlayWindow : Window
     private const int HotkeyCycleViews = 1;
     private const int HotkeyQuit = 2;
     private const int HotkeyFakeRequest = 3;
+    private const int HotkeyStopwatchToggle = 4;
+    private const int HotkeyStopwatchReset = 5;
+    private const int HotkeyAddAlarm = 6;
+    private const int HotkeyDismissAlarm = 7;
+    private const int HotkeyFakeNotification = 8;
+
+    /// <summary>The alarm that Ctrl+Alt+A sets.</summary>
+    private const int QuickAlarmMinutes = 15;
     private const int HotkeyAllow = 10;
     private const int HotkeyDeny = 11;
 
@@ -42,8 +51,12 @@ public partial class OverlayWindow : Window
         [OverlayView.Idle] = new ViewMetrics(220, 22, 12),
         [OverlayView.MediaCompact] = new ViewMetrics(340, 30, 16),
         [OverlayView.AgentCompact] = new ViewMetrics(340, 30, 16),
-        [OverlayView.MediaExpanded] = new ViewMetrics(420, 100, 24),
-        [OverlayView.Permission] = new ViewMetrics(460, 124, 30),
+        [OverlayView.TimersCompact] = new ViewMetrics(340, 30, 16),
+        [OverlayView.TimersExpanded] = new ViewMetrics(460, 61, 15),
+        [OverlayView.Notification] = new ViewMetrics(460, 61, 15),
+        [OverlayView.Alert] = new ViewMetrics(460, 73, 18),
+        [OverlayView.MediaExpanded] = new ViewMetrics(420, 61, 15),
+        [OverlayView.Permission] = new ViewMetrics(460, 73, 18),
     };
 
     private readonly Dictionary<OverlayView, FrameworkElement> _contentByView;
@@ -56,6 +69,7 @@ public partial class OverlayWindow : Window
     private bool _pointerInside;
     private bool _cardKeysRegistered;
     private PermissionRequestViewModel? _watchedRequest;
+    private readonly AlarmSound _alarmSound = new();
     private int _fakeRequestCount;
 
     public OverlayWindow(OverlayViewModel viewModel)
@@ -72,6 +86,10 @@ public partial class OverlayWindow : Window
             [OverlayView.Idle] = IdleContent,
             [OverlayView.MediaCompact] = MediaCompactContent,
             [OverlayView.AgentCompact] = AgentCompactContent,
+            [OverlayView.TimersCompact] = TimersCompactContent,
+            [OverlayView.TimersExpanded] = TimersExpandedContent,
+            [OverlayView.Notification] = NotificationContent,
+            [OverlayView.Alert] = AlertContent,
             [OverlayView.MediaExpanded] = MediaExpandedContent,
             [OverlayView.Permission] = PermissionContent,
         };
@@ -83,6 +101,7 @@ public partial class OverlayWindow : Window
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         ViewModel.Permissions.PropertyChanged += OnPermissionsPropertyChanged;
+        ViewModel.Timers.Alarms.PropertyChanged += OnAlarmsPropertyChanged;
         Reposition();
     }
 
@@ -133,11 +152,18 @@ public partial class OverlayWindow : Window
             Win32.UnregisterHotKey(handle, HotkeyCycleViews);
             Win32.UnregisterHotKey(handle, HotkeyQuit);
             Win32.UnregisterHotKey(handle, HotkeyFakeRequest);
+            Win32.UnregisterHotKey(handle, HotkeyStopwatchToggle);
+            Win32.UnregisterHotKey(handle, HotkeyStopwatchReset);
+            Win32.UnregisterHotKey(handle, HotkeyAddAlarm);
+            Win32.UnregisterHotKey(handle, HotkeyDismissAlarm);
+            Win32.UnregisterHotKey(handle, HotkeyFakeNotification);
             SetCardKeys(false);
         }
 
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         ViewModel.Permissions.PropertyChanged -= OnPermissionsPropertyChanged;
+        ViewModel.Timers.Alarms.PropertyChanged -= OnAlarmsPropertyChanged;
+        _alarmSound.Stop();
         _hwndSource?.RemoveHook(WndProc);
         _hwndSource = null;
 
@@ -169,6 +195,15 @@ public partial class OverlayWindow : Window
         bool fake = Win32.RegisterHotKey(handle, HotkeyFakeRequest, modifiers, Win32.VK_P);
 
         FileLog.Write($"Debug hotkeys registered: Ctrl+Alt+I={cycle}, Ctrl+Alt+Q={quit}, Ctrl+Alt+P={fake}");
+
+        bool stopwatch = Win32.RegisterHotKey(handle, HotkeyStopwatchToggle, modifiers, Win32.VK_S);
+        bool reset = Win32.RegisterHotKey(handle, HotkeyStopwatchReset, modifiers, Win32.VK_R);
+        bool alarm = Win32.RegisterHotKey(handle, HotkeyAddAlarm, modifiers, Win32.VK_A);
+        bool dismiss = Win32.RegisterHotKey(handle, HotkeyDismissAlarm, modifiers, Win32.VK_D);
+        bool fakeNotification = Win32.RegisterHotKey(handle, HotkeyFakeNotification, modifiers, Win32.VK_N);
+        FileLog.Write($"Debug notification hotkey: Ctrl+Alt+N={fakeNotification}");
+        FileLog.Write(
+            $"Timer hotkeys registered: Ctrl+Alt+S={stopwatch}, Ctrl+Alt+R={reset}, Ctrl+Alt+A={alarm}, Ctrl+Alt+D={dismiss}");
     }
 
     /// <summary>
@@ -228,6 +263,22 @@ public partial class OverlayWindow : Window
                     case HotkeyFakeRequest:
                         EnqueueFakeRequest();
                         break;
+                    case HotkeyStopwatchToggle:
+                        ViewModel.Timers.Stopwatch.Toggle();
+                        break;
+                    case HotkeyStopwatchReset:
+                        ViewModel.Timers.Stopwatch.Reset();
+                        break;
+                    case HotkeyAddAlarm:
+                        ViewModel.Timers.AddAlarm(QuickAlarmMinutes);
+                        FileLog.Write($"Alarm set for {QuickAlarmMinutes} min");
+                        break;
+                    case HotkeyDismissAlarm:
+                        ViewModel.Timers.Alarms.DismissOrClear();
+                        break;
+                    case HotkeyFakeNotification:
+                        ShowFakeNotification();
+                        break;
                     case HotkeyAllow:
                         Decide(allow: true, "Enter");
                         break;
@@ -282,7 +333,9 @@ public partial class OverlayWindow : Window
     /// keyboard focus, so they are registered as hotkeys for exactly that window of time.
     /// </summary>
     private void UpdateCardKeys() =>
-        SetCardKeys(_pointerInside && ViewModel.View == OverlayView.Permission);
+        SetCardKeys(_pointerInside &&
+            ViewModel.View == OverlayView.Permission &&
+            ViewModel.Permissions.Current is { IsInteractive: true });
 
     private void SetCardKeys(bool register)
     {
@@ -323,6 +376,35 @@ public partial class OverlayWindow : Window
             ? $"Permission {(allow ? "allowed" : "denied")} by {source}: {tool}"
             : $"Permission {(allow ? "allow" : "deny")} by {source} ignored (no card, or card just appeared)");
     }
+
+    private void OnShowTimersClick(object sender, RoutedEventArgs e) => ViewModel.ShowTimersPanel();
+
+    private void OnShowMediaClick(object sender, RoutedEventArgs e) => ViewModel.ShowMediaPanel();
+
+    private void OnStopwatchToggleClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Stopwatch.Toggle();
+
+    private void OnStopwatchResetClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Stopwatch.Reset();
+
+    private void OnAddAlarmClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out int minutes))
+        {
+            ViewModel.Timers.AddAlarm(minutes);
+            FileLog.Write($"Alarm set for {minutes} min");
+        }
+    }
+
+    private void OnClearAlarmsClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Alarms.DismissOrClear();
+
+    private void OnSnoozeClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Alarms.Snooze();
+
+    private void OnDismissAlarmClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Alarms.Dismiss();
+
+    private void OnNotificationClick(object sender, MouseButtonEventArgs e) => ViewModel.Notifications.Dismiss();
+
+    /// <summary>Debug: shows a fake notification, so the banner can be tried without a real toast.</summary>
+    internal void ShowFakeNotification() =>
+        ViewModel.Notifications.Enqueue(new NotificationItem("Debug", "Islet test", "A fake notification, " + DateTime.Now.ToString("HH:mm:ss")));
 
     private void OnPlayPauseClick(object sender, RoutedEventArgs e) => ViewModel.Media.TogglePlayPause();
 
@@ -382,6 +464,28 @@ public partial class OverlayWindow : Window
             FadeIn(PermissionContent);
         }
 
+        // A question card has no Allow / Deny, so Enter and Esc must go back to the terminal.
+        UpdateCardKeys();
+
+        UpdatePulse();
+    }
+
+    private void OnAlarmsPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Timers.AlarmsViewModel.Ringing))
+        {
+            return;
+        }
+
+        if (ViewModel.Timers.Alarms.Ringing is not null)
+        {
+            _alarmSound.Start();
+        }
+        else
+        {
+            _alarmSound.Stop();
+        }
+
         UpdatePulse();
     }
 
@@ -393,10 +497,10 @@ public partial class OverlayWindow : Window
         }
     }
 
-    /// <summary>A request unanswered for 30 s gets a pulsing border.</summary>
+    /// <summary>A request unanswered for 30 s, or a ringing alarm, gets a pulsing border.</summary>
     private void UpdatePulse()
     {
-        if (ViewModel.Permissions.Current is { IsOverdue: true })
+        if (ViewModel.Permissions.Current is { IsOverdue: true } || ViewModel.Timers.Alarms.Ringing is not null)
         {
             if (_borderBrush.HasAnimatedProperties)
             {

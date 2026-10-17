@@ -19,17 +19,43 @@ public sealed class PermissionRequestViewModel : ObservableObject
         };
         Repo = PermissionPreview.RepoName(message.Cwd);
         Tool = message.Tool ?? "Tool";
-        PermissionPreview preview = PermissionPreview.From(message.Tool, message.Input);
-        Preview = preview.Line;
-        FullText = preview.Full;
+        IsQuestion = message.Tool == QuestionTool;
+
+        if (IsQuestion)
+        {
+            // The island never answers a question: the options live in the terminal.
+            Headline = $"{(AgentName == "Claude Code" ? "Claude" : AgentName)} has a question";
+            Preview = "Go to your session";
+            FullText = PermissionPreview.QuestionText(message.Input) ?? Preview;
+        }
+        else
+        {
+            PermissionPreview preview = PermissionPreview.From(message.Tool, message.Input);
+            Headline = Tool;
+            Preview = preview.Line;
+            FullText = preview.Full;
+        }
+
         ArrivedAtUtc = arrivedAtUtc;
     }
+
+    /// <summary>The tool Claude Code uses to ask the user a multiple-choice question.</summary>
+    public const string QuestionTool = "AskUserQuestion";
 
     public string AgentName { get; }
 
     public string Repo { get; }
 
     public string Tool { get; }
+
+    /// <summary>The card's bold line: the tool name, or "Claude Code has a question".</summary>
+    public string Headline { get; }
+
+    /// <summary>A question can't be allowed or denied from the island.</summary>
+    public bool IsQuestion { get; }
+
+    /// <summary>False for questions: no Allow / Deny buttons, and Enter / Esc are left alone.</summary>
+    public bool IsInteractive => !IsQuestion;
 
     public string Preview { get; }
 

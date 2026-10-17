@@ -20,6 +20,9 @@
   <ItemGroup>
     <!-- Shared pipe protocol and product constants. -->
     <ProjectReference Include="..\Islet.Hook\Islet.Hook.csproj" />
+    <!-- Overpass Mono, SIL OFL: embedded so the font works without being installed. -->
+    <Resource Include="Fonts\OverpassMono.ttf" />
+    <None Include="Fonts\OFL.txt" />
   </ItemGroup>
 
   <ItemGroup>

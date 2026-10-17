@@ -23,6 +23,11 @@ internal static class Win32
     public const uint VK_I = 0x49;
     public const uint VK_Q = 0x51;
     public const uint VK_P = 0x50;
+    public const uint VK_S = 0x53;
+    public const uint VK_R = 0x52;
+    public const uint VK_A = 0x41;
+    public const uint VK_D = 0x44;
+    public const uint VK_N = 0x4E;
     public const uint VK_RETURN = 0x0D;
     public const uint VK_ESCAPE = 0x1B;
 

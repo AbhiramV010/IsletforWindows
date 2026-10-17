@@ -193,6 +193,42 @@ public class OverlayPriorityTests
     }
 
     [Fact]
+    public void A_finished_agent_opens_the_done_card_which_outranks_a_notification_but_not_an_alarm()
+    {
+        Rig rig = Build();
+        rig.Agents.Apply(new HookMessage { Id = "1", Agent = "claude", Event = "PostToolUse", SessionId = "s", Cwd = "C:/r", Tool = "Bash" });
+        Assert.Equal(OverlayView.AgentCompact, rig.Overlay.View);
+
+        rig.Notifications.Enqueue(new NotificationItem("A", "t", "b"));
+        rig.Agents.Apply(new HookMessage { Id = "2", Agent = "claude", Event = "Stop", SessionId = "s", Cwd = "C:/r" });
+        Assert.Equal(OverlayView.AgentDone, rig.Overlay.View);
+
+        rig.Timers.AddAlarm(1);
+        _now += TimeSpan.FromMinutes(1);
+        rig.Timers.Tick();
+        Assert.Equal(OverlayView.Alert, rig.Overlay.View);
+
+        rig.Timers.Alarms.Dismiss();
+        Assert.Equal(OverlayView.AgentDone, rig.Overlay.View);
+
+        rig.Agents.DismissDone();
+        Assert.Equal(OverlayView.Notification, rig.Overlay.View);
+    }
+
+    [Fact]
+    public void The_done_card_goes_away_by_itself()
+    {
+        Rig rig = Build();
+        rig.Agents.Apply(new HookMessage { Id = "1", Agent = "claude", Event = "Stop", SessionId = "s", Cwd = "C:/r" });
+        Assert.Equal(OverlayView.AgentDone, rig.Overlay.View);
+
+        _now += AgentSessionsViewModel.DoneVisibleFor;
+        rig.Agents.Tick();
+
+        Assert.Equal(OverlayView.Idle, rig.Overlay.View);
+    }
+
+    [Fact]
     public void A_permission_card_outranks_everything()
     {
         Rig rig = Build();

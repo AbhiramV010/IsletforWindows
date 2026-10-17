@@ -11,7 +11,7 @@ the full spec and milestone plan.
 
 | Path | What |
 | --- | --- |
-| `src/Islet.App/` | The WPF overlay, media module, permission card, named pipe server. |
+| `src/Islet.App/` | The WPF overlay, media module, permission card, named pipe server, timers, notifications. |
 | `src/Islet.Hook/` | Console exe the agents run as a hook command. Also owns the pipe protocol and product constants (`ProductInfo`), which the app references. |
 | `tests/Islet.Tests/` | xUnit: protocol, Claude adapter, shim fail-safe paths, pipe server + ACL, permission queue. |
 | `tests/Islet.Tests/fixtures/` | Saved hook payloads piped into the shim by the tests. |
@@ -69,7 +69,13 @@ anything throws, the shim exits 0 with no stdout and Claude shows its normal pro
 
 | Control | Action |
 | --- | --- |
-| Hover the island | Expands media to art + previous / play-pause / next. |
+| Hover the island | Expands media to art + previous / play-pause / next. With no music, opens the stopwatch and alarm panel. |
+| Clock button (media panel) / note button (timers panel) | Switches between the two panels for that hover. |
+| `Ctrl+Alt+S` | Start / pause the stopwatch. |
+| `Ctrl+Alt+R` | Reset the stopwatch. |
+| `Ctrl+Alt+A` | Set an alarm for 15 minutes from now. |
+| `Ctrl+Alt+D` | Stop the ringing alarm. With none ringing, clear all pending alarms. |
+| `Ctrl+Alt+N` | Debug: show a fake notification. |
 | Allow / Deny on the card | Answers the request at the front of the queue. |
 | `Enter` / `Esc` | Allow / deny, only while the pointer is on the card. |
 | `Ctrl+Alt+I` | Debug: force a view (idle → compact → expanded → automatic). |
@@ -86,6 +92,39 @@ The island re-asserts `HWND_TOPMOST` once a second (`SWP_NOACTIVATE | SWP_NOMOVE
 so other always-on-top windows and the taskbar can't bury it. It cannot outrank an
 exclusive-fullscreen game, which no non-injected overlay can.
 
+## Music
+
+Only music is shown: Spotify, Apple Music, iTunes, YouTube Music desktop wrappers, Tidal,
+Deezer, Amazon Music, Groove, foobar2000, MusicBee and a few others, matched by app id. Netflix,
+games and other video are ignored, and nothing falls back to "whatever is playing". Browsers all
+report as Chrome or Brave, so a browser session counts as music only if it reports an album,
+which music players do and video sites don't. Firefox uses a hashed app id and is not recognised.
+A session that is playing beats a paused one, and Spotify beats the rest.
+
+## Stopwatch and alarms
+
+Both live in the island, since it never takes focus. The compact line shows the stopwatch
+(while it has a time on it) and the next alarm (when it is within 15 minutes). The hover panel has
+start / pause / reset and `+5 +15 +30 +60` minute alarm presets. A ringing alarm takes over the
+island with Snooze (5 min) and Dismiss, plays the system alert sound for up to a minute, and
+pulses the border. Pending alarms are saved to `%LOCALAPPDATA%\Islet\alarms.json`, so they survive
+a restart; one missed by more than an hour while the app was closed is dropped.
+
+## Notifications
+
+Windows toasts are mirrored by reading the banner when it pops up, through UI Automation. The
+proper listener API needs an MSIX package identity, which this app doesn't have. Limits:
+
+- Only banners that actually appear are seen. Toasts held back by Focus Assist (including while
+  a fullscreen app is up) are missed.
+- Text only, and you can't click through to the sending app.
+- **Unverified on real toasts:** the banner's element layout was written from memory, not tested,
+  because no banner could be shown while a fullscreen window was up. The log records the window
+  structure (never the notification text) when a shell window opens but nothing can be read.
+
+Each banner shows for 6 s (click to dismiss), queues with a "+N" badge, and repeats seen within
+3 s are ignored. `scripts/send-test-toast.ps1` sends a test toast.
+
 ## Milestones
 
 1. **Overlay (done)**: island window, top-center positioning, per-monitor DPI, always-on-top
@@ -95,7 +134,7 @@ exclusive-fullscreen game, which no non-injected overlay can.
 3. **Pipe and shim (done)**: pipe server with user-only ACL, protocol, fail-safe shim, tests.
 4. **Claude Code permissions (done, needs a real-session check)**: settings block, permission
    card, FIFO queue, Allow / Deny.
-5. **Session progress (done, needs a real-session check)**: working / waiting / done line from
+5. **Session progress (done)**: working / waiting / done line from
    `Notification`, `PostToolUse`, `Stop`.
 6. Codex hooks.
 7. Polish: tray menu, start with Windows, fullscreen hide setting, multi-monitor choice.

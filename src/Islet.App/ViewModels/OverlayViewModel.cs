@@ -16,6 +16,9 @@ public enum OverlayView
     /// <summary>One line: agent, repo, and what it is doing.</summary>
     AgentCompact,
 
+    /// <summary>An agent just finished: "Claude is done", for a few seconds.</summary>
+    AgentDone,
+
     /// <summary>One line: the stopwatch and the next alarm.</summary>
     TimersCompact,
 
@@ -36,8 +39,8 @@ public enum OverlayView
 }
 
 /// <summary>
-/// Picks the view. From the top: a permission card, a ringing alarm, a notification, a debug
-/// override, the hover panel, a running agent, a running timer, music, and finally idle.
+/// Picks the view. From the top: a permission card, a ringing alarm, a finished agent, a
+/// notification, a debug override, the hover panel, a running agent, a running timer, music, and finally idle.
 /// </summary>
 public sealed class OverlayViewModel : ObservableObject
 {
@@ -159,6 +162,12 @@ public sealed class OverlayViewModel : ObservableObject
         if (Timers.Alarms.Ringing is not null)
         {
             return OverlayView.Alert;
+        }
+
+        // A finished agent is worth interrupting for: it is the cue to go back to the terminal.
+        if (Agents.Current is { State: AgentState.Done })
+        {
+            return OverlayView.AgentDone;
         }
 
         if (Notifications.Current is not null)

@@ -28,7 +28,7 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <SolidColorBrush x:Key="PillBackground" Color="#F00D0D11" />
-        <Color x:Key="PillBorderColor">#1FFFFFFF</Color>
+        <Color x:Key="PillBorderColor">#80FFFFFF</Color>
         <Color x:Key="PulseColor">#FFF5A524</Color>
         <SolidColorBrush x:Key="TextPrimary" Color="#F2FFFFFF" />
         <SolidColorBrush x:Key="TextSecondary" Color="#B3FFFFFF" />
@@ -232,6 +232,24 @@
                                 IsEnabled="{Binding Media.CanNext}" Click="OnNextClick" />
                         <Button Style="{StaticResource IconButton}" Content="&#xE916;" Margin="6,0,0,0"
                                 ToolTip="Stopwatch and alarms" Click="OnShowTimersClick" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Agent finished: "Claude is done". Click to dismiss. -->
+                <Grid x:Name="AgentDoneContent" Margin="42,8,42,10" Visibility="Collapsed"
+                      DataContext="{Binding Agents}" Background="Transparent"
+                      MouseLeftButtonUp="OnAgentDoneClick" Cursor="Hand">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock FontSize="10" TextTrimming="CharacterEllipsis">
+                            <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AgentClaude}" />
+                            <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
+                            <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
+                        </TextBlock>
+                        <TextBlock Margin="0,4,0,0" FontSize="13" TextTrimming="CharacterEllipsis">
+                            <Run Text="{Binding Current.DoneHeadline, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
+                            <Run Text="  " />
+                            <Run Text="Go back to your session" FontSize="11" Foreground="{StaticResource TextSecondary}" />
+                        </TextBlock>
                     </StackPanel>
                 </Grid>
 

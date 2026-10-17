@@ -51,6 +51,7 @@ public partial class OverlayWindow : Window
         [OverlayView.Idle] = new ViewMetrics(220, 22, 12),
         [OverlayView.MediaCompact] = new ViewMetrics(340, 30, 16),
         [OverlayView.AgentCompact] = new ViewMetrics(340, 30, 16),
+        [OverlayView.AgentDone] = new ViewMetrics(460, 61, 15),
         [OverlayView.TimersCompact] = new ViewMetrics(340, 30, 16),
         [OverlayView.TimersExpanded] = new ViewMetrics(460, 61, 15),
         [OverlayView.Notification] = new ViewMetrics(460, 61, 15),
@@ -86,6 +87,7 @@ public partial class OverlayWindow : Window
             [OverlayView.Idle] = IdleContent,
             [OverlayView.MediaCompact] = MediaCompactContent,
             [OverlayView.AgentCompact] = AgentCompactContent,
+            [OverlayView.AgentDone] = AgentDoneContent,
             [OverlayView.TimersCompact] = TimersCompactContent,
             [OverlayView.TimersExpanded] = TimersExpandedContent,
             [OverlayView.Notification] = NotificationContent,
@@ -401,6 +403,8 @@ public partial class OverlayWindow : Window
     private void OnDismissAlarmClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Alarms.Dismiss();
 
     private void OnNotificationClick(object sender, MouseButtonEventArgs e) => ViewModel.Notifications.Dismiss();
+
+    private void OnAgentDoneClick(object sender, MouseButtonEventArgs e) => ViewModel.Agents.DismissDone();
 
     /// <summary>Debug: shows a fake notification, so the banner can be tried without a real toast.</summary>
     internal void ShowFakeNotification() =>

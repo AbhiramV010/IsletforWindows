@@ -25,6 +25,12 @@ public sealed class AgentSessionViewModel : ObservableObject
 
     public string AgentName { get; }
 
+    /// <summary>"Claude" for Claude Code, otherwise the agent's name.</summary>
+    public string ShortName => AgentName == "Claude Code" ? "Claude" : AgentName;
+
+    /// <summary>The line the expanded card shows when the agent finishes.</summary>
+    public string DoneHeadline => $"{ShortName} is done";
+
     public string Repo { get; internal set; }
 
     public AgentState State
@@ -72,7 +78,8 @@ public sealed class AgentSessionViewModel : ObservableObject
 /// </summary>
 public sealed class AgentSessionsViewModel : ObservableObject
 {
-    public static readonly TimeSpan DoneVisibleFor = TimeSpan.FromSeconds(5);
+    /// <summary>How long the "is done" card stays up, long enough to notice from another window.</summary>
+    public static readonly TimeSpan DoneVisibleFor = TimeSpan.FromSeconds(8);
 
     /// <summary>A session that goes quiet this long (agent killed, terminal closed) is dropped.</summary>
     public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(10);
@@ -133,6 +140,20 @@ public sealed class AgentSessionsViewModel : ObservableObject
         else if (state == AgentState.Done)
         {
             session.LastTool = null;
+        }
+
+        Refresh();
+    }
+
+    /// <summary>Closes the "is done" card early (a click). Sessions still working are untouched.</summary>
+    public void DismissDone()
+    {
+        foreach ((string key, AgentSessionViewModel session) in _sessions.ToArray())
+        {
+            if (session.State == AgentState.Done)
+            {
+                _sessions.Remove(key);
+            }
         }
 
         Refresh();

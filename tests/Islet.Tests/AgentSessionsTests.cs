@@ -61,7 +61,7 @@ public class AgentSessionsTests
     }
 
     [Fact]
-    public void Stop_means_done_and_clears_after_five_seconds()
+    public void Stop_means_done_and_clears_after_the_done_window()
     {
         AgentSessionsViewModel sessions = New();
         sessions.Apply(Event("PostToolUse", tool: "Bash"));
@@ -78,6 +78,35 @@ public class AgentSessionsTests
         sessions.Tick();
         Assert.Null(sessions.Current);
         Assert.Equal(0, sessions.Count);
+    }
+
+    [Theory]
+    [InlineData("claude", "Claude is done")]
+    [InlineData("codex", "Codex is done")]
+    public void Done_headline_names_the_agent(string agent, string expected)
+    {
+        AgentSessionsViewModel sessions = New();
+        HookMessage stop = Event("Stop");
+        stop.Agent = agent;
+        sessions.Apply(stop);
+
+        Assert.Equal(expected, sessions.Current!.DoneHeadline);
+    }
+
+    [Fact]
+    public void Dismiss_done_closes_finished_sessions_and_leaves_working_ones()
+    {
+        AgentSessionsViewModel sessions = New();
+        sessions.Apply(Event("PostToolUse", sessionId: "busy", cwd: "C:/dev/busy", tool: "Bash"));
+        Advance(TimeSpan.FromSeconds(1));
+        sessions.Apply(Event("Stop", sessionId: "finished", cwd: "C:/dev/finished"));
+        Assert.Equal("finished", sessions.Current!.Repo);
+
+        sessions.DismissDone();
+
+        Assert.Equal("busy", sessions.Current!.Repo);
+        Assert.Equal(AgentState.Working, sessions.Current.State);
+        Assert.Equal(1, sessions.Count);
     }
 
     [Fact]

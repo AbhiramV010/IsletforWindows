@@ -1,0 +1,145 @@
+<Window x:Class="Islet.App.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Islet.App"
+        Title="{x:Static local:IsletInfo.Name}"
+        Width="412"
+        Height="164"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="{x:Null}"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="Segoe UI Variable Text, Segoe UI">
+
+    <!--
+      The window is fixed at the size of the largest state plus shadow room; the
+      pill inside it animates its own width/height, so contents never reflow the
+      window. Transparent window areas fall through to the apps below.
+    -->
+    <Window.Resources>
+        <SolidColorBrush x:Key="PillBackground" Color="#F00D0D11" />
+        <SolidColorBrush x:Key="PillBorder" Color="#1FFFFFFF" />
+        <SolidColorBrush x:Key="TextPrimary" Color="#F2FFFFFF" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#B3FFFFFF" />
+        <SolidColorBrush x:Key="TextTertiary" Color="#66FFFFFF" />
+        <SolidColorBrush x:Key="Accent" Color="#7DD3FC" />
+        <SolidColorBrush x:Key="IdleDot" Color="#59FFFFFF" />
+    </Window.Resources>
+
+    <Grid>
+        <Border x:Name="Pill"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,16,0,0"
+                Width="200"
+                Height="36"
+                Background="{StaticResource PillBackground}"
+                BorderBrush="{StaticResource PillBorder}"
+                BorderThickness="1"
+                CornerRadius="18">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="0" Opacity="0.45" Color="Black" />
+            </Border.Effect>
+
+            <Grid ClipToBounds="True" Margin="1">
+                <!-- Collapsed: barely there, just an idle dot. -->
+                <Grid x:Name="CollapsedContent">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding State}" Value="Collapsed">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Ellipse Width="6" Height="6" Fill="{StaticResource IdleDot}" />
+                </Grid>
+
+                <!-- Compact: one line of media or agent status. -->
+                <Grid x:Name="CompactContent" Margin="14,0">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding State}" Value="Compact">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="6" Height="6" Fill="{StaticResource IdleDot}" VerticalAlignment="Center" />
+                        <TextBlock Text="{x:Static local:IsletInfo.Name}"
+                                   Margin="8,0,0,0"
+                                   FontSize="12.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimary}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               Text="idle"
+                               FontSize="10.5"
+                               Foreground="{StaticResource TextTertiary}"
+                               VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- Expanded: media controls / permission cards land here. -->
+                <Grid x:Name="ExpandedContent" Margin="18,14">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding State}" Value="Expanded">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Fill="{StaticResource Accent}" VerticalAlignment="Center" />
+                        <TextBlock Text="{x:Static local:IsletInfo.Name}"
+                                   Margin="10,0,0,0"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimary}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1"
+                               Margin="0,10,0,0"
+                               FontSize="11"
+                               LineHeight="15"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource TextSecondary}"
+                               Text="Pill window with top-center positioning, per-monitor DPI and no focus stealing. Media, agent status and permission cards land here in the next milestones." />
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,0,0,2"
+                               FontSize="10"
+                               Foreground="{StaticResource TextTertiary}"
+                               VerticalAlignment="Bottom"
+                               Text="Ctrl+Alt+I cycles collapsed → compact → expanded · Ctrl+Alt+Q quits" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

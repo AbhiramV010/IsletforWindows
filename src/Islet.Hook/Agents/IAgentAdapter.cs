@@ -24,7 +24,7 @@ internal interface IAgentAdapter
 
 internal static class AgentAdapters
 {
-    private static readonly IAgentAdapter[] All = [new ClaudeAdapter()];
+    private static readonly IAgentAdapter[] All = [new ClaudeAdapter(), new CodexAdapter()];
 
     public static IAgentAdapter? Find(string name) =>
         Array.Find(All, adapter => string.Equals(adapter.Name, name, StringComparison.OrdinalIgnoreCase));

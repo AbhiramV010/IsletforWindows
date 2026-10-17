@@ -7,6 +7,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Islet.App.Interop;
 using Islet.App.Notifications;
+using Islet.App.Settings;
 using Islet.App.Ui;
 using Islet.App.ViewModels;
 using Islet.Hook.Protocol;
@@ -35,14 +36,8 @@ public partial class OverlayWindow : Window
     private const int HotkeyCycleViews = 1;
     private const int HotkeyQuit = 2;
     private const int HotkeyFakeRequest = 3;
-    private const int HotkeyStopwatchToggle = 4;
-    private const int HotkeyStopwatchReset = 5;
-    private const int HotkeyAddAlarm = 6;
-    private const int HotkeyDismissAlarm = 7;
     private const int HotkeyFakeNotification = 8;
 
-    /// <summary>The alarm that Ctrl+Alt+A sets.</summary>
-    private const int QuickAlarmMinutes = 15;
     private const int HotkeyAllow = 10;
     private const int HotkeyDeny = 11;
 
@@ -52,10 +47,8 @@ public partial class OverlayWindow : Window
         [OverlayView.MediaCompact] = new ViewMetrics(340, 30, 16),
         [OverlayView.AgentCompact] = new ViewMetrics(340, 30, 16),
         [OverlayView.AgentDone] = new ViewMetrics(460, 61, 15),
-        [OverlayView.TimersCompact] = new ViewMetrics(340, 30, 16),
-        [OverlayView.TimersExpanded] = new ViewMetrics(460, 61, 15),
+        [OverlayView.ClockCompact] = new ViewMetrics(340, 30, 16),
         [OverlayView.Notification] = new ViewMetrics(460, 61, 15),
-        [OverlayView.Alert] = new ViewMetrics(460, 73, 18),
         [OverlayView.MediaExpanded] = new ViewMetrics(420, 61, 15),
         [OverlayView.Permission] = new ViewMetrics(460, 73, 18),
     };
@@ -70,13 +63,16 @@ public partial class OverlayWindow : Window
     private bool _pointerInside;
     private bool _cardKeysRegistered;
     private PermissionRequestViewModel? _watchedRequest;
-    private readonly AlarmSound _alarmSound = new();
+    private readonly AppSettings _settings;
+    private readonly FullscreenWatcher _fullscreen;
     private int _fakeRequestCount;
 
-    public OverlayWindow(OverlayViewModel viewModel)
+    public OverlayWindow(OverlayViewModel viewModel, AppSettings settings, FullscreenWatcher fullscreen)
     {
         InitializeComponent();
         ViewModel = viewModel;
+        _settings = settings;
+        _fullscreen = fullscreen;
 
         _borderBrush = new SolidColorBrush((Color)FindResource("PillBorderColor"));
         Pill.BorderBrush = _borderBrush;
@@ -88,10 +84,8 @@ public partial class OverlayWindow : Window
             [OverlayView.MediaCompact] = MediaCompactContent,
             [OverlayView.AgentCompact] = AgentCompactContent,
             [OverlayView.AgentDone] = AgentDoneContent,
-            [OverlayView.TimersCompact] = TimersCompactContent,
-            [OverlayView.TimersExpanded] = TimersExpandedContent,
+            [OverlayView.ClockCompact] = ClockCompactContent,
             [OverlayView.Notification] = NotificationContent,
-            [OverlayView.Alert] = AlertContent,
             [OverlayView.MediaExpanded] = MediaExpandedContent,
             [OverlayView.Permission] = PermissionContent,
         };
@@ -103,19 +97,59 @@ public partial class OverlayWindow : Window
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         ViewModel.Permissions.PropertyChanged += OnPermissionsPropertyChanged;
-        ViewModel.Timers.Alarms.PropertyChanged += OnAlarmsPropertyChanged;
-        Reposition();
+        _settings.Changed += OnSettingsChanged;
+        _fullscreen.Changed += OnFullscreenChanged;
     }
 
     public OverlayViewModel ViewModel { get; }
 
-    /// <summary>Centers the window on the primary monitor, touching its top edge.</summary>
+    /// <summary>
+    /// Centers the window on the chosen monitor (the primary one by default, or when the chosen
+    /// one is unplugged), touching its top edge. Positions in physical pixels, so it is right on
+    /// any monitor whatever its scaling.
+    /// </summary>
     public void Reposition()
     {
-        double screenWidth = SystemParameters.PrimaryScreenWidth;
-        Left = Math.Max(0, (screenWidth - Width) / 2);
-        Top = 0;
+        if (_hwndSource is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<MonitorInfo> monitors = Monitors.List();
+        if (Monitors.Choose(monitors, _settings.MonitorDevice) is not { } monitor)
+        {
+            return;
+        }
+
+        (int x, int y) = Monitors.TopCenter(monitor, Width);
+        Win32.SetWindowPos(
+            _hwndSource.Handle, Win32.HWND_TOPMOST, x, y, 0, 0, Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
     }
+
+    /// <summary>Steps aside for a fullscreen app, unless the view is one that needs you.</summary>
+    private void UpdateVisibility()
+    {
+        if (_hwndSource is null)
+        {
+            return;
+        }
+
+        bool hide = OverlayVisibility.ShouldHide(_settings.HideInFullscreen, _fullscreen.IsFullscreen, ViewModel.View);
+        Visibility target = hide ? Visibility.Hidden : Visibility.Visible;
+        if (Visibility != target)
+        {
+            Visibility = target;
+            FileLog.Write(hide ? "Hidden: a fullscreen app is in front" : "Shown again");
+        }
+    }
+
+    private void OnSettingsChanged()
+    {
+        Reposition();
+        UpdateVisibility();
+    }
+
+    private void OnFullscreenChanged(bool fullscreen) => UpdateVisibility();
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -123,15 +157,19 @@ public partial class OverlayWindow : Window
 
         _hwndSource = (HwndSource)PresentationSource.FromVisual(this)!;
         ApplyNoActivateStyles();
+        Reposition();
         _hwndSource.AddHook(WndProc);
         RegisterDebugHotkeys();
         StartTopmostWatchdog();
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
+        IReadOnlyList<MonitorInfo> attached = Monitors.List();
+        MonitorInfo? chosen = Monitors.Choose(attached, _settings.MonitorDevice);
         FileLog.Write(
-            $"{IsletInfo.Name} shown at ({Left:0},{Top:0}), screen {SystemParameters.PrimaryScreenWidth:0}x{SystemParameters.PrimaryScreenHeight:0}, " +
-            $"primary DPI {VisualTreeHelper.GetDpi(this).PixelsPerDip * 96:0}");
+            $"{IsletInfo.Name} shown at ({Left:0},{Top:0}) on {chosen?.DeviceName ?? "no monitor"} " +
+            $"({chosen?.Width}x{chosen?.Height}, {chosen?.Dpi} dpi), {attached.Count} monitor(s), " +
+            $"hide in fullscreen: {_settings.HideInFullscreen}");
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
@@ -143,6 +181,8 @@ public partial class OverlayWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        _settings.Changed -= OnSettingsChanged;
+        _fullscreen.Changed -= OnFullscreenChanged;
 
         _topmostWatchdog?.Stop();
         _topmostWatchdog = null;
@@ -154,18 +194,12 @@ public partial class OverlayWindow : Window
             Win32.UnregisterHotKey(handle, HotkeyCycleViews);
             Win32.UnregisterHotKey(handle, HotkeyQuit);
             Win32.UnregisterHotKey(handle, HotkeyFakeRequest);
-            Win32.UnregisterHotKey(handle, HotkeyStopwatchToggle);
-            Win32.UnregisterHotKey(handle, HotkeyStopwatchReset);
-            Win32.UnregisterHotKey(handle, HotkeyAddAlarm);
-            Win32.UnregisterHotKey(handle, HotkeyDismissAlarm);
             Win32.UnregisterHotKey(handle, HotkeyFakeNotification);
             SetCardKeys(false);
         }
 
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         ViewModel.Permissions.PropertyChanged -= OnPermissionsPropertyChanged;
-        ViewModel.Timers.Alarms.PropertyChanged -= OnAlarmsPropertyChanged;
-        _alarmSound.Stop();
         _hwndSource?.RemoveHook(WndProc);
         _hwndSource = null;
 
@@ -198,14 +232,8 @@ public partial class OverlayWindow : Window
 
         FileLog.Write($"Debug hotkeys registered: Ctrl+Alt+I={cycle}, Ctrl+Alt+Q={quit}, Ctrl+Alt+P={fake}");
 
-        bool stopwatch = Win32.RegisterHotKey(handle, HotkeyStopwatchToggle, modifiers, Win32.VK_S);
-        bool reset = Win32.RegisterHotKey(handle, HotkeyStopwatchReset, modifiers, Win32.VK_R);
-        bool alarm = Win32.RegisterHotKey(handle, HotkeyAddAlarm, modifiers, Win32.VK_A);
-        bool dismiss = Win32.RegisterHotKey(handle, HotkeyDismissAlarm, modifiers, Win32.VK_D);
         bool fakeNotification = Win32.RegisterHotKey(handle, HotkeyFakeNotification, modifiers, Win32.VK_N);
         FileLog.Write($"Debug notification hotkey: Ctrl+Alt+N={fakeNotification}");
-        FileLog.Write(
-            $"Timer hotkeys registered: Ctrl+Alt+S={stopwatch}, Ctrl+Alt+R={reset}, Ctrl+Alt+A={alarm}, Ctrl+Alt+D={dismiss}");
     }
 
     /// <summary>
@@ -264,19 +292,6 @@ public partial class OverlayWindow : Window
                         break;
                     case HotkeyFakeRequest:
                         EnqueueFakeRequest();
-                        break;
-                    case HotkeyStopwatchToggle:
-                        ViewModel.Timers.Stopwatch.Toggle();
-                        break;
-                    case HotkeyStopwatchReset:
-                        ViewModel.Timers.Stopwatch.Reset();
-                        break;
-                    case HotkeyAddAlarm:
-                        ViewModel.Timers.AddAlarm(QuickAlarmMinutes);
-                        FileLog.Write($"Alarm set for {QuickAlarmMinutes} min");
-                        break;
-                    case HotkeyDismissAlarm:
-                        ViewModel.Timers.Alarms.DismissOrClear();
                         break;
                     case HotkeyFakeNotification:
                         ShowFakeNotification();
@@ -379,29 +394,6 @@ public partial class OverlayWindow : Window
             : $"Permission {(allow ? "allow" : "deny")} by {source} ignored (no card, or card just appeared)");
     }
 
-    private void OnShowTimersClick(object sender, RoutedEventArgs e) => ViewModel.ShowTimersPanel();
-
-    private void OnShowMediaClick(object sender, RoutedEventArgs e) => ViewModel.ShowMediaPanel();
-
-    private void OnStopwatchToggleClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Stopwatch.Toggle();
-
-    private void OnStopwatchResetClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Stopwatch.Reset();
-
-    private void OnAddAlarmClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out int minutes))
-        {
-            ViewModel.Timers.AddAlarm(minutes);
-            FileLog.Write($"Alarm set for {minutes} min");
-        }
-    }
-
-    private void OnClearAlarmsClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Alarms.DismissOrClear();
-
-    private void OnSnoozeClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Alarms.Snooze();
-
-    private void OnDismissAlarmClick(object sender, RoutedEventArgs e) => ViewModel.Timers.Alarms.Dismiss();
-
     private void OnNotificationClick(object sender, MouseButtonEventArgs e) => ViewModel.Notifications.Dismiss();
 
     private void OnAgentDoneClick(object sender, MouseButtonEventArgs e) => ViewModel.Agents.DismissDone();
@@ -444,6 +436,7 @@ public partial class OverlayWindow : Window
         {
             AnimateTo(ViewModel.View);
             UpdateCardKeys();
+            UpdateVisibility();
         }
     }
 
@@ -474,25 +467,6 @@ public partial class OverlayWindow : Window
         UpdatePulse();
     }
 
-    private void OnAlarmsPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName != nameof(Timers.AlarmsViewModel.Ringing))
-        {
-            return;
-        }
-
-        if (ViewModel.Timers.Alarms.Ringing is not null)
-        {
-            _alarmSound.Start();
-        }
-        else
-        {
-            _alarmSound.Stop();
-        }
-
-        UpdatePulse();
-    }
-
     private void OnRequestPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(PermissionRequestViewModel.IsOverdue))
@@ -501,10 +475,10 @@ public partial class OverlayWindow : Window
         }
     }
 
-    /// <summary>A request unanswered for 30 s, or a ringing alarm, gets a pulsing border.</summary>
+    /// <summary>A request unanswered for 30 s gets a pulsing border.</summary>
     private void UpdatePulse()
     {
-        if (ViewModel.Permissions.Current is { IsOverdue: true } || ViewModel.Timers.Alarms.Ringing is not null)
+        if (ViewModel.Permissions.Current is { IsOverdue: true })
         {
             if (_borderBrush.HasAnimatedProperties)
             {

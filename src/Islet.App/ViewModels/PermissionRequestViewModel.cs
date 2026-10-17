@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using Islet.App.Agents;
 using Islet.Hook.Protocol;
 
@@ -17,6 +18,7 @@ public sealed class PermissionRequestViewModel : ObservableObject
             "codex" => "Codex",
             _ => message.Agent,
         };
+        AgentBrush = AgentColors.For(message.Agent);
         Repo = PermissionPreview.RepoName(message.Cwd);
         Tool = message.Tool ?? "Tool";
         IsQuestion = message.Tool == QuestionTool;
@@ -43,6 +45,8 @@ public sealed class PermissionRequestViewModel : ObservableObject
     public const string QuestionTool = "AskUserQuestion";
 
     public string AgentName { get; }
+
+    public Brush AgentBrush { get; }
 
     public string Repo { get; }
 

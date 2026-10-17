@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using Islet.App.Notifications;
-using Islet.App.Timers;
 
 namespace Islet.App.ViewModels;
 
@@ -19,57 +18,50 @@ public enum OverlayView
     /// <summary>An agent just finished: "Claude is done", for a few seconds.</summary>
     AgentDone,
 
-    /// <summary>One line: the stopwatch and the next alarm.</summary>
-    TimersCompact,
+    /// <summary>One line: the Windows Clock app's stopwatch, timer or next alarm.</summary>
+    ClockCompact,
 
     /// <summary>Art, title, artist and transport controls, while hovered.</summary>
     MediaExpanded,
 
-    /// <summary>Stopwatch and alarm controls, while hovered.</summary>
-    TimersExpanded,
-
     /// <summary>A Windows toast, for a few seconds.</summary>
     Notification,
-
-    /// <summary>An alarm that is going off. Dismiss or snooze.</summary>
-    Alert,
 
     /// <summary>The permission card. Takes priority over everything else.</summary>
     Permission,
 }
 
 /// <summary>
-/// Picks the view. From the top: a permission card, a ringing alarm, a finished agent, a
-/// notification, a debug override, the hover panel, a running agent, a running timer, music, and finally idle.
+/// Picks the view. From the top: a permission card, a finished agent, a notification, a debug
+/// override, the music panel on hover, a running agent, the Clock app's timers, music, and
+/// finally idle.
 /// </summary>
 public sealed class OverlayViewModel : ObservableObject
 {
     private static readonly OverlayView?[] DebugCycle =
-        [null, OverlayView.Idle, OverlayView.MediaCompact, OverlayView.MediaExpanded, OverlayView.TimersExpanded];
+        [null, OverlayView.Idle, OverlayView.MediaCompact, OverlayView.MediaExpanded, OverlayView.ClockCompact];
 
     private OverlayView _view = OverlayView.Idle;
     private bool _isHovered;
-    private bool _showTimersPanel;
     private OverlayView? _forcedView;
 
     public OverlayViewModel(
         MediaViewModel media,
         PermissionQueueViewModel permissions,
         AgentSessionsViewModel agents,
-        TimersViewModel timers,
+        ClockViewModel clock,
         NotificationsViewModel notifications)
     {
         Media = media;
         Permissions = permissions;
         Agents = agents;
-        Timers = timers;
+        Clock = clock;
         Notifications = notifications;
 
         Media.PropertyChanged += OnChildChanged;
         Permissions.PropertyChanged += OnChildChanged;
         Agents.PropertyChanged += OnChildChanged;
-        Timers.PropertyChanged += OnChildChanged;
-        Timers.Alarms.PropertyChanged += OnChildChanged;
+        Clock.PropertyChanged += OnChildChanged;
         Notifications.PropertyChanged += OnChildChanged;
     }
 
@@ -79,7 +71,7 @@ public sealed class OverlayViewModel : ObservableObject
 
     public PermissionQueueViewModel Permissions { get; }
 
-    public TimersViewModel Timers { get; }
+    public ClockViewModel Clock { get; }
 
     public NotificationsViewModel Notifications { get; }
 
@@ -94,23 +86,12 @@ public sealed class OverlayViewModel : ObservableObject
         get => _isHovered;
         set
         {
-            if (!SetField(ref _isHovered, value))
+            if (SetField(ref _isHovered, value))
             {
-                return;
+                UpdateView();
             }
-
-            // Each hover opens on media (or timers, with no music); a switch only lasts for that hover.
-            if (!value)
-            {
-                _showTimersPanel = false;
-            }
-
-            UpdateView();
         }
     }
-
-    /// <summary>True when the hover panel is the timers one rather than media.</summary>
-    public bool IsTimersPanelOpen => View == OverlayView.TimersExpanded;
 
     /// <summary>Debug override from Ctrl+Alt+I or --demo. Null means automatic.</summary>
     public OverlayView? ForcedView
@@ -125,19 +106,7 @@ public sealed class OverlayViewModel : ObservableObject
         }
     }
 
-    public void ShowTimersPanel()
-    {
-        _showTimersPanel = true;
-        UpdateView();
-    }
-
-    public void ShowMediaPanel()
-    {
-        _showTimersPanel = false;
-        UpdateView();
-    }
-
-    /// <summary>Debug: automatic → idle → compact → expanded → timers → automatic.</summary>
+    /// <summary>Debug: automatic → idle → compact → expanded → clock → automatic.</summary>
     public void CycleForcedView()
     {
         int index = Array.IndexOf(DebugCycle, ForcedView);
@@ -146,22 +115,13 @@ public sealed class OverlayViewModel : ObservableObject
 
     private void OnChildChanged(object? sender, PropertyChangedEventArgs e) => UpdateView();
 
-    private void UpdateView()
-    {
-        View = ComputeView();
-        OnPropertyChanged(nameof(IsTimersPanelOpen));
-    }
+    private void UpdateView() => View = ComputeView();
 
     private OverlayView ComputeView()
     {
         if (Permissions.Current is not null)
         {
             return OverlayView.Permission;
-        }
-
-        if (Timers.Alarms.Ringing is not null)
-        {
-            return OverlayView.Alert;
         }
 
         // A finished agent is worth interrupting for: it is the cue to go back to the terminal.
@@ -180,20 +140,20 @@ public sealed class OverlayViewModel : ObservableObject
             return forced;
         }
 
-        if (IsHovered)
+        if (IsHovered && Media.HasSession)
         {
-            return _showTimersPanel || !Media.HasSession ? OverlayView.TimersExpanded : OverlayView.MediaExpanded;
+            return OverlayView.MediaExpanded;
         }
 
-        // A running agent outranks a timer, which outranks the music line.
+        // A running agent outranks the Clock app's timers, which outrank the music line.
         if (Agents.Current is not null)
         {
             return OverlayView.AgentCompact;
         }
 
-        if (Timers.IsCompactActive)
+        if (Clock.IsActive)
         {
-            return OverlayView.TimersCompact;
+            return OverlayView.ClockCompact;
         }
 
         return Media.HasSession && Media.IsPlaying ? OverlayView.MediaCompact : OverlayView.Idle;

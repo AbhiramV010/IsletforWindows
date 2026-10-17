@@ -1,9 +1,12 @@
 ﻿using System.Windows;
 using System.Windows.Threading;
 using Islet.App.Agents;
+using Islet.App.Clock;
 using Islet.App.Media;
+using Islet.App.Interop;
 using Islet.App.Notifications;
-using Islet.App.Timers;
+using Islet.App.Settings;
+using Islet.App.Ui;
 using Islet.App.ViewModels;
 
 namespace Islet.App;
@@ -18,7 +21,10 @@ public partial class App : Application
     private PermissionQueueViewModel? _permissions;
     private AgentSessionsViewModel? _sessions;
     private NotificationsViewModel? _notifications;
-    private ToastBannerSource? _toasts;
+    private NotificationWatcher? _toasts;
+    private ClockMirror? _clockMirror;
+    private FullscreenWatcher? _fullscreen;
+    private TrayController? _tray;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -48,18 +54,28 @@ public partial class App : Application
         _permissions = new PermissionQueueViewModel();
         _sessions = new AgentSessionsViewModel();
         _notifications = new NotificationsViewModel();
-        var timers = new TimersViewModel(store: new FileAlarmStore());
+        var clock = new ClockViewModel();
+        AppSettings settings = AppSettings.Load();
+        _fullscreen = new FullscreenWatcher();
         _overlay = new OverlayWindow(
-            new OverlayViewModel(mediaViewModel, _permissions, _sessions, timers, _notifications));
+            new OverlayViewModel(mediaViewModel, _permissions, _sessions, clock, _notifications),
+            settings,
+            _fullscreen);
         _overlay.Show();
+        _fullscreen.Start();
+
+        _tray = new TrayController(settings, new StartupRegistration(), () => Dispatcher.BeginInvoke(Shutdown));
 
         _ = StartMediaAsync();
 
         _pipeServer = new PipeServer(IsletInfo.PipeName, new AgentHub(Dispatcher, _permissions, _sessions));
         _pipeServer.Start();
 
-        _toasts = new ToastBannerSource(item => Dispatcher.InvokeAsync(() => _notifications.Enqueue(item)));
+        _toasts = new NotificationWatcher(item => Dispatcher.InvokeAsync(() => _notifications.Enqueue(item)));
         _toasts.Start();
+
+        _clockMirror = new ClockMirror(snapshot => Dispatcher.InvokeAsync(() => clock.Apply(snapshot)));
+        _clockMirror.Start();
 
         if (e.Args.Contains("--demo", StringComparer.OrdinalIgnoreCase))
         {
@@ -71,6 +87,9 @@ public partial class App : Application
     {
         // Waiting agents fall back to their own terminal prompt.
         _permissions?.CancelAll();
+        _tray?.Dispose();
+        _fullscreen?.Dispose();
+        _clockMirror?.Dispose();
         _toasts?.Dispose();
         _pipeServer?.Dispose();
         _media?.Dispose();

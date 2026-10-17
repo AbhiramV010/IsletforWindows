@@ -1,6 +1,6 @@
 using Islet.App.Media;
 using Islet.App.Notifications;
-using Islet.App.Timers;
+using Islet.App.Clock;
 using Islet.App.ViewModels;
 using Islet.Hook.Protocol;
 
@@ -100,115 +100,60 @@ public class NotificationsTests
     private static NotificationItem Item(string app, string title, string body) => new(app, title, body);
 }
 
-public class ToastTextTests
-{
-    [Fact]
-    public void App_title_and_body()
-    {
-        NotificationItem item = ToastText.Parse(["Microsoft Teams", "Ann Lee", "Are you free at 3?"])!;
-        Assert.Equal(new NotificationItem("Microsoft Teams", "Ann Lee", "Are you free at 3?"), item);
-    }
-
-    [Fact]
-    public void Extra_lines_join_into_the_body()
-    {
-        NotificationItem item = ToastText.Parse(["Mail", "Subject", "line one", "line two"])!;
-        Assert.Equal("line one line two", item.Body);
-    }
-
-    [Fact]
-    public void Two_texts_mean_title_and_body_with_no_app()
-    {
-        NotificationItem item = ToastText.Parse(["Title", "Body"])!;
-        Assert.Equal(new NotificationItem("Notification", "Title", "Body"), item);
-    }
-
-    [Fact]
-    public void One_text_is_just_a_title() =>
-        Assert.Equal(new NotificationItem("Notification", "Only", ""), ToastText.Parse(["Only"]));
-
-    [Fact]
-    public void Blank_text_and_back_to_back_repeats_are_dropped()
-    {
-        NotificationItem item = ToastText.Parse(["  ", "Mail", "Mail", "Subject", "", "Body"])!;
-        Assert.Equal(new NotificationItem("Mail", "Subject", "Body"), item);
-    }
-
-    [Fact]
-    public void Nothing_to_show_is_null()
-    {
-        Assert.Null(ToastText.Parse([]));
-        Assert.Null(ToastText.Parse(["", "   "]));
-    }
-
-    [Fact]
-    public void Very_long_text_is_clipped()
-    {
-        NotificationItem item = ToastText.Parse(["App", "Title", new string('x', 2000)])!;
-        Assert.Equal(300, item.Body.Length);
-        Assert.EndsWith("…", item.Body);
-    }
-}
-
 /// <summary>Which view wins when several things want the island.</summary>
 public class OverlayPriorityTests
 {
     private DateTime _now = new(2026, 10, 17, 12, 0, 0, DateTimeKind.Utc);
 
+    private static readonly ClockSnapshot RunningStopwatch =
+        new(ClockPage.Stopwatch, TimeSpan.FromSeconds(30), true, [], []);
+
     [Fact]
     public void Idle_by_default() => Assert.Equal(OverlayView.Idle, Build().Overlay.View);
 
     [Fact]
-    public void Timer_line_shows_for_a_running_stopwatch()
+    public void The_clock_line_shows_for_a_running_stopwatch_and_clears_when_clock_closes()
     {
         Rig rig = Build();
-        rig.Timers.Stopwatch.Start();
-        Assert.Equal(OverlayView.TimersCompact, rig.Overlay.View);
+        rig.Clock.Apply(RunningStopwatch);
+        Assert.Equal(OverlayView.ClockCompact, rig.Overlay.View);
+
+        rig.Clock.Apply(null);
+        Assert.Equal(OverlayView.Idle, rig.Overlay.View);
     }
 
     [Fact]
-    public void A_running_agent_outranks_a_timer()
+    public void A_running_agent_outranks_the_clock_line()
     {
         Rig rig = Build();
-        rig.Timers.Stopwatch.Start();
+        rig.Clock.Apply(RunningStopwatch);
         rig.Agents.Apply(new HookMessage { Id = "1", Agent = "claude", Event = "PostToolUse", SessionId = "s", Cwd = "C:/r", Tool = "Bash" });
         Assert.Equal(OverlayView.AgentCompact, rig.Overlay.View);
     }
 
     [Fact]
-    public void A_notification_outranks_agents_and_timers_but_not_an_alarm()
+    public void The_clock_line_outranks_the_music_line()
     {
         Rig rig = Build();
-        rig.Timers.Stopwatch.Start();
-        rig.Notifications.Enqueue(new NotificationItem("A", "t", "b"));
-        Assert.Equal(OverlayView.Notification, rig.Overlay.View);
+        rig.Media.ApplySession("Spotify.exe");
+        rig.Media.Apply(new Islet.App.Media.MediaPlayback(true, true, true, true));
+        Assert.Equal(OverlayView.MediaCompact, rig.Overlay.View);
 
-        rig.Timers.AddAlarm(1);
-        _now += TimeSpan.FromMinutes(1);
-        rig.Timers.Tick();
-        Assert.Equal(OverlayView.Alert, rig.Overlay.View);
-
-        rig.Timers.Alarms.Dismiss();
-        Assert.Equal(OverlayView.Notification, rig.Overlay.View);
+        rig.Clock.Apply(RunningStopwatch);
+        Assert.Equal(OverlayView.ClockCompact, rig.Overlay.View);
     }
 
     [Fact]
-    public void A_finished_agent_opens_the_done_card_which_outranks_a_notification_but_not_an_alarm()
+    public void A_finished_agent_opens_the_done_card_which_outranks_a_notification()
     {
         Rig rig = Build();
         rig.Agents.Apply(new HookMessage { Id = "1", Agent = "claude", Event = "PostToolUse", SessionId = "s", Cwd = "C:/r", Tool = "Bash" });
         Assert.Equal(OverlayView.AgentCompact, rig.Overlay.View);
 
         rig.Notifications.Enqueue(new NotificationItem("A", "t", "b"));
+        Assert.Equal(OverlayView.Notification, rig.Overlay.View);
+
         rig.Agents.Apply(new HookMessage { Id = "2", Agent = "claude", Event = "Stop", SessionId = "s", Cwd = "C:/r" });
-        Assert.Equal(OverlayView.AgentDone, rig.Overlay.View);
-
-        rig.Timers.AddAlarm(1);
-        _now += TimeSpan.FromMinutes(1);
-        rig.Timers.Tick();
-        Assert.Equal(OverlayView.Alert, rig.Overlay.View);
-
-        rig.Timers.Alarms.Dismiss();
         Assert.Equal(OverlayView.AgentDone, rig.Overlay.View);
 
         rig.Agents.DismissDone();
@@ -232,43 +177,26 @@ public class OverlayPriorityTests
     public void A_permission_card_outranks_everything()
     {
         Rig rig = Build();
-        rig.Timers.AddAlarm(1);
-        _now += TimeSpan.FromMinutes(1);
-        rig.Timers.Tick();
+        rig.Clock.Apply(RunningStopwatch);
+        rig.Agents.Apply(new HookMessage { Id = "1", Agent = "claude", Event = "Stop", SessionId = "s", Cwd = "C:/r" });
+        rig.Notifications.Enqueue(new NotificationItem("A", "t", "b"));
         rig.Permissions.Enqueue(new HookMessage { Id = "1", Agent = "claude", Event = "PermissionRequest", Tool = "Bash" });
 
         Assert.Equal(OverlayView.Permission, rig.Overlay.View);
     }
 
     [Fact]
-    public void Hovering_with_no_music_opens_the_timers_panel_and_unhovering_closes_it()
+    public void Hovering_opens_the_music_panel_only_when_there_is_music()
     {
         Rig rig = Build();
         rig.Overlay.IsHovered = true;
-        Assert.Equal(OverlayView.TimersExpanded, rig.Overlay.View);
+        Assert.Equal(OverlayView.Idle, rig.Overlay.View);
+
+        rig.Media.ApplySession("Spotify.exe");
+        Assert.Equal(OverlayView.MediaExpanded, rig.Overlay.View);
 
         rig.Overlay.IsHovered = false;
         Assert.Equal(OverlayView.Idle, rig.Overlay.View);
-    }
-
-    [Fact]
-    public void Hovering_with_music_opens_media_and_the_timers_button_switches_only_for_that_hover()
-    {
-        Rig rig = Build();
-        rig.Media.ApplySession("Spotify.exe");
-        rig.Overlay.IsHovered = true;
-        Assert.Equal(OverlayView.MediaExpanded, rig.Overlay.View);
-
-        rig.Overlay.ShowTimersPanel();
-        Assert.Equal(OverlayView.TimersExpanded, rig.Overlay.View);
-
-        rig.Overlay.ShowMediaPanel();
-        Assert.Equal(OverlayView.MediaExpanded, rig.Overlay.View);
-
-        rig.Overlay.ShowTimersPanel();
-        rig.Overlay.IsHovered = false;
-        rig.Overlay.IsHovered = true;
-        Assert.Equal(OverlayView.MediaExpanded, rig.Overlay.View);
     }
 
     private Rig Build()
@@ -276,9 +204,9 @@ public class OverlayPriorityTests
         var media = new MediaViewModel(null);
         var permissions = new PermissionQueueViewModel(() => _now);
         var agents = new AgentSessionsViewModel(() => _now);
-        var timers = new TimersViewModel(() => _now);
+        var clock = new ClockViewModel(() => _now.ToLocalTime());
         var notifications = new NotificationsViewModel(() => _now);
-        return new Rig(new OverlayViewModel(media, permissions, agents, timers, notifications), media, permissions, agents, timers, notifications);
+        return new Rig(new OverlayViewModel(media, permissions, agents, clock, notifications), media, permissions, agents, clock, notifications);
     }
 
     private sealed record Rig(
@@ -286,6 +214,6 @@ public class OverlayPriorityTests
         MediaViewModel Media,
         PermissionQueueViewModel Permissions,
         AgentSessionsViewModel Agents,
-        TimersViewModel Timers,
+        ClockViewModel Clock,
         NotificationsViewModel Notifications);
 }

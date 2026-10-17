@@ -69,8 +69,42 @@ public readonly record struct PermissionPreview(string Line, string Full)
         "WebFetch" => GetString(input, "url"),
         "WebSearch" => GetString(input, "query"),
         "Glob" or "Grep" => GetString(input, "pattern"),
-        _ => null,
+        "apply_patch" => PatchSummary(input),
+
+        // Codex says why it is asking; other tools with no known field fall back to compact JSON.
+        _ => GetString(input, "description"),
     };
+
+    /// <summary>
+    /// A Codex <c>apply_patch</c> input holds the whole patch in <c>command</c>. The card shows
+    /// which files it touches ("Update src/app.ts, Add notes.txt"), not the diff.
+    /// </summary>
+    private static string? PatchSummary(JsonElement input)
+    {
+        string[] prefixes = ["*** Add File: ", "*** Update File: ", "*** Delete File: "];
+        string[] verbs = ["Add", "Update", "Delete"];
+
+        string? patch = GetString(input, "command");
+        if (patch is null)
+        {
+            return GetString(input, "description");
+        }
+
+        var touched = new List<string>();
+        foreach (string line in patch.Split('\n'))
+        {
+            string trimmed = line.Trim();
+            for (int i = 0; i < prefixes.Length; i++)
+            {
+                if (trimmed.StartsWith(prefixes[i], StringComparison.Ordinal))
+                {
+                    touched.Add($"{verbs[i]} {trimmed[prefixes[i].Length..].Trim()}");
+                }
+            }
+        }
+
+        return touched.Count > 0 ? string.Join(", ", touched) : GetString(input, "description") ?? patch;
+    }
 
     private static string? GetString(JsonElement input, string property) =>
         input.ValueKind == JsonValueKind.Object && input.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String

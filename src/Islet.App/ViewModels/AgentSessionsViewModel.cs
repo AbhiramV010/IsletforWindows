@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using System.Windows.Threading;
 using Islet.App.Agents;
 using Islet.Hook.Protocol;
@@ -17,13 +18,16 @@ public sealed class AgentSessionViewModel : ObservableObject
     private AgentState _state = AgentState.Working;
     private string? _lastTool;
 
-    public AgentSessionViewModel(string agentName, string repo)
+    public AgentSessionViewModel(string agentKey, string agentName, string repo)
     {
+        AgentBrush = AgentColors.For(agentKey);
         AgentName = agentName;
         Repo = repo;
     }
 
     public string AgentName { get; }
+
+    public Brush AgentBrush { get; }
 
     /// <summary>"Claude" for Claude Code, otherwise the agent's name.</summary>
     public string ShortName => AgentName == "Claude Code" ? "Claude" : AgentName;
@@ -121,6 +125,7 @@ public sealed class AgentSessionsViewModel : ObservableObject
         if (!_sessions.TryGetValue(key, out AgentSessionViewModel? session))
         {
             session = new AgentSessionViewModel(
+                message.Agent,
                 message.Agent == "claude" ? "Claude Code" : message.Agent == "codex" ? "Codex" : message.Agent,
                 PermissionPreview.RepoName(message.Cwd));
             _sessions[key] = session;

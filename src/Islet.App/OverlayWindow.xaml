@@ -76,15 +76,6 @@
             </Setter>
         </Style>
 
-        <!-- Small preset button for the alarm row. -->
-        <Style x:Key="PresetButton" TargetType="Button" BasedOn="{StaticResource IslandButton}">
-            <Setter Property="Height" Value="24" />
-            <Setter Property="Width" Value="38" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="Margin" Value="0,0,4,0" />
-        </Style>
-
         <Style x:Key="AllowButton" TargetType="Button" BasedOn="{StaticResource IslandButton}">
             <Setter Property="Background" Value="{StaticResource Accent}" />
             <Setter Property="Foreground" Value="#FF0D0D11" />
@@ -176,7 +167,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Margin="0,0,10,0" VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" FontSize="11">
-                        <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AgentClaude}" />
+                        <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
                         <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
                         <Run Text="{Binding Current.Repo, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
                     </TextBlock>
@@ -230,8 +221,7 @@
                         </Button>
                         <Button x:Name="NextButton" Style="{StaticResource IconButton}" Content="&#xE893;"
                                 IsEnabled="{Binding Media.CanNext}" Click="OnNextClick" />
-                        <Button Style="{StaticResource IconButton}" Content="&#xE916;" Margin="6,0,0,0"
-                                ToolTip="Stopwatch and alarms" Click="OnShowTimersClick" />
+
                     </StackPanel>
                 </Grid>
 
@@ -241,7 +231,7 @@
                       MouseLeftButtonUp="OnAgentDoneClick" Cursor="Hand">
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock FontSize="10" TextTrimming="CharacterEllipsis">
-                            <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AgentClaude}" />
+                            <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
                             <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
                             <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
                         </TextBlock>
@@ -253,117 +243,40 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Timers, compact: stopwatch on the left, next alarm on the right. -->
-                <Grid x:Name="TimersCompactContent" Margin="26,0" Visibility="Collapsed" DataContext="{Binding Timers}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                Visibility="{Binding Stopwatch.HasTime, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="&#xE916;" FontFamily="{StaticResource IconFont}" FontSize="12"
-                                   Foreground="{StaticResource Accent}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Stopwatch.Display}" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
-                                   VerticalAlignment="Center">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Stopwatch.IsRunning}" Value="False">
-                                            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
-                                Visibility="{Binding HasAlarmSoon, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="&#xE121;" FontFamily="{StaticResource IconFont}" FontSize="12"
-                                   Foreground="{StaticResource AlarmAmber}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Alarms.NextText}" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Grid>
-
-                <!-- Timers, expanded: stopwatch controls and alarm presets. -->
-                <Grid x:Name="TimersExpandedContent" Margin="36,7,36,9" Visibility="Collapsed" DataContext="{Binding Timers}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="STOPWATCH" FontSize="9" Foreground="{StaticResource TextTertiary}" />
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                            <TextBlock Text="{Binding Stopwatch.Display}" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" MinWidth="76" />
-                            <Button Style="{StaticResource IconButton}" Width="26" Height="26" Margin="6,0,0,0"
-                                    Click="OnStopwatchToggleClick" ToolTip="Start / pause (Ctrl+Alt+S)">
-                                <Button.Content>
-                                    <TextBlock FontFamily="{StaticResource IconFont}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="&#xE768;" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Stopwatch.IsRunning}" Value="True">
-                                                        <Setter Property="Text" Value="&#xE769;" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Button.Content>
-                            </Button>
-                            <Button Style="{StaticResource IconButton}" Width="26" Height="26" Content="&#xE72C;"
-                                    IsEnabled="{Binding Stopwatch.HasTime}" Click="OnStopwatchResetClick"
-                                    ToolTip="Reset (Ctrl+Alt+R)" />
+                <!-- Windows Clock app: the stopwatch, running timer or next alarm it is showing. -->
+                <Grid x:Name="ClockCompactContent" Margin="26,0" Visibility="Collapsed" DataContext="{Binding Clock}">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding HasStopwatch, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="&#xE916;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                       Foreground="{StaticResource Accent}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding StopwatchText}" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
+                                       VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding StopwatchRunning}" Value="False">
+                                                <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                        <TextBlock FontSize="9" Foreground="{StaticResource TextTertiary}">
-                            <Run Text="ALARM IN" />
-                            <Run Text="{Binding Alarms.NextText, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" FontWeight="SemiBold" />
-                        </TextBlock>
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                            <Button Style="{StaticResource PresetButton}" Content="+5" Click="OnAddAlarmClick" Tag="5" />
-                            <Button Style="{StaticResource PresetButton}" Content="+15" Click="OnAddAlarmClick" Tag="15" />
-                            <Button Style="{StaticResource PresetButton}" Content="+30" Click="OnAddAlarmClick" Tag="30" />
-                            <Button Style="{StaticResource PresetButton}" Content="+60" Click="OnAddAlarmClick" Tag="60" />
-                            <Button Style="{StaticResource IconButton}" Width="24" Height="24" Content="&#xE711;" FontSize="11"
-                                    IsEnabled="{Binding Alarms.HasPending}" Click="OnClearAlarmsClick"
-                                    ToolTip="Clear alarms (Ctrl+Alt+D)" />
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding HasTimer, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="&#xE916;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                       Foreground="{StaticResource Accent}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding TimerText}" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding TimerBadge}" Margin="6,0,0,0" FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextTertiary}" VerticalAlignment="Center" />
                         </StackPanel>
-                    </StackPanel>
-                    <Button Grid.Column="3" Style="{StaticResource IconButton}" Width="26" Height="26" Margin="8,0,0,0"
-                            Content="&#xE8D6;" Click="OnShowMediaClick" ToolTip="Back to music"
-                            DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"
-                            Visibility="{Binding Media.HasSession, Converter={StaticResource BoolToVis}}" />
-                </Grid>
-
-                <!-- Alarm ringing: dismiss or snooze. -->
-                <Grid x:Name="AlertContent" Margin="42,8,42,10" Visibility="Collapsed" DataContext="{Binding Timers.Alarms}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                        <TextBlock Text="&#xE121;" FontFamily="{StaticResource IconFont}" FontSize="11"
-                                   Foreground="{StaticResource AlarmAmber}" />
-                        <TextBlock Margin="0,3,0,0" FontSize="13" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis">
-                            <Run Text="Alarm" />
-                            <Run Text="{Binding RingingAt, Mode=OneWay}" FontWeight="Normal" Foreground="{StaticResource TextSecondary}" />
-                        </TextBlock>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal">
-                            <Button Style="{StaticResource IslandButton}" Content="Snooze 5m" Click="OnSnoozeClick" />
-                            <Button Style="{StaticResource AllowButton}" Margin="8,0,0,0" Content="Dismiss" Click="OnDismissAlarmClick" />
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding HasAlarm, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="&#xE121;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                       Foreground="{StaticResource AlarmAmber}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding AlarmText}" Margin="8,0,0,0" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
                         </StackPanel>
-                        <TextBlock FontSize="9" Margin="0,3,0,0" HorizontalAlignment="Right"
-                                   Foreground="{StaticResource TextTertiary}" Text="Ctrl+Alt+D dismiss" />
                     </StackPanel>
                 </Grid>
 
@@ -426,7 +339,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock FontSize="10" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
-                                <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource AgentClaude}" />
+                                <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
                                 <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
                                 <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
                             </TextBlock>

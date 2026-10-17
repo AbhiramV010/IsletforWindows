@@ -10,10 +10,7 @@ internal static class FileLog
 {
     private static readonly object Gate = new();
 
-    private static readonly string LogDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        IsletInfo.Name,
-        "logs");
+    private static readonly string LogDirectory = Islet.Hook.ProductInfo.LogDirectory;
 
     public static string LogFilePath => Path.Combine(LogDirectory, "app.log");
 

@@ -1,6 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -8,15 +8,16 @@ using System.Windows.Threading;
 using Islet.App.Interop;
 using Islet.App.Ui;
 using Islet.App.ViewModels;
+using Islet.Hook.Protocol;
 using Microsoft.Win32;
 
 namespace Islet.App;
 
 /// <summary>
-/// The pill. Sits at the top center of the primary monitor's work area, never
-/// activates (WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW plus WM_MOUSEACTIVATE), and
-/// animates between states by resizing the pill container inside a fixed,
-/// fixed-size transparent window.
+/// The island: an inverted trapezoid hanging from the top center of the primary
+/// monitor, flush with the screen edge. Never activates (WS_EX_NOACTIVATE |
+/// WS_EX_TOOLWINDOW plus WM_MOUSEACTIVATE), and animates between views by resizing
+/// the shape inside a fixed-size transparent window.
 /// </summary>
 public partial class OverlayWindow : Window
 {
@@ -24,45 +25,75 @@ public partial class OverlayWindow : Window
     private const double ContentFadeMs = 180;
     private const double ContentFadeDelayMs = 80;
     private const double TopmostReassertMs = 1000;
+    private const double PulseMs = 900;
 
-    private const int HotkeyCycleStates = 1;
+    /// <summary>Hover intent: brushing past the top edge on the way to a tab bar shouldn't expand it.</summary>
+    private static readonly TimeSpan HoverEnterDelay = TimeSpan.FromMilliseconds(220);
+    private static readonly TimeSpan HoverLeaveDelay = TimeSpan.FromMilliseconds(350);
+
+    private const int HotkeyCycleViews = 1;
     private const int HotkeyQuit = 2;
+    private const int HotkeyFakeRequest = 3;
+    private const int HotkeyAllow = 10;
+    private const int HotkeyDeny = 11;
 
-    private static readonly Dictionary<OverlayState, StateMetrics> MetricsByState = new()
+    private static readonly Dictionary<OverlayView, ViewMetrics> MetricsByView = new()
     {
-        [OverlayState.Collapsed] = new StateMetrics(200, 36, 18),
-        [OverlayState.Compact] = new StateMetrics(280, 44, 22),
-        [OverlayState.Expanded] = new StateMetrics(380, 132, 24),
+        [OverlayView.Idle] = new ViewMetrics(220, 22, 12),
+        [OverlayView.MediaCompact] = new ViewMetrics(340, 30, 16),
+        [OverlayView.AgentCompact] = new ViewMetrics(340, 30, 16),
+        [OverlayView.MediaExpanded] = new ViewMetrics(420, 100, 24),
+        [OverlayView.Permission] = new ViewMetrics(460, 124, 30),
     };
 
-    private readonly Dictionary<OverlayState, FrameworkElement> _contentByState;
+    private readonly Dictionary<OverlayView, FrameworkElement> _contentByView;
+    private readonly DispatcherTimer _hoverTimer;
+
+    /// <summary>Created in code: XAML brushes get frozen, and this one animates when a request is overdue.</summary>
+    private readonly SolidColorBrush _borderBrush;
     private HwndSource? _hwndSource;
     private DispatcherTimer? _topmostWatchdog;
+    private bool _pointerInside;
+    private bool _cardKeysRegistered;
+    private PermissionRequestViewModel? _watchedRequest;
+    private int _fakeRequestCount;
 
-    public OverlayWindow()
+    public OverlayWindow(OverlayViewModel viewModel)
     {
         InitializeComponent();
+        ViewModel = viewModel;
+
+        _borderBrush = new SolidColorBrush((Color)FindResource("PillBorderColor"));
+        Pill.BorderBrush = _borderBrush;
         DataContext = ViewModel;
 
-        _contentByState = new Dictionary<OverlayState, FrameworkElement>
+        _contentByView = new Dictionary<OverlayView, FrameworkElement>
         {
-            [OverlayState.Collapsed] = CollapsedContent,
-            [OverlayState.Compact] = CompactContent,
-            [OverlayState.Expanded] = ExpandedContent,
+            [OverlayView.Idle] = IdleContent,
+            [OverlayView.MediaCompact] = MediaCompactContent,
+            [OverlayView.AgentCompact] = AgentCompactContent,
+            [OverlayView.MediaExpanded] = MediaExpandedContent,
+            [OverlayView.Permission] = PermissionContent,
         };
 
+        _hoverTimer = new DispatcherTimer();
+        _hoverTimer.Tick += OnHoverTimerTick;
+        Pill.MouseEnter += OnPillMouseEnter;
+        Pill.MouseLeave += OnPillMouseLeave;
+
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        ViewModel.Permissions.PropertyChanged += OnPermissionsPropertyChanged;
         Reposition();
     }
 
-    public OverlayViewModel ViewModel { get; } = new();
+    public OverlayViewModel ViewModel { get; }
 
-    /// <summary>Centers the window on the primary monitor's work area.</summary>
+    /// <summary>Centers the window on the primary monitor, touching its top edge.</summary>
     public void Reposition()
     {
-        Rect workArea = SystemParameters.WorkArea;
-        Left = workArea.Left + Math.Max(0, (workArea.Width - Width) / 2);
-        Top = workArea.Top;
+        double screenWidth = SystemParameters.PrimaryScreenWidth;
+        Left = Math.Max(0, (screenWidth - Width) / 2);
+        Top = 0;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -78,7 +109,7 @@ public partial class OverlayWindow : Window
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         FileLog.Write(
-            $"{IsletInfo.Name} shown at ({Left:0},{Top:0}), work area {SystemParameters.WorkArea}, " +
+            $"{IsletInfo.Name} shown at ({Left:0},{Top:0}), screen {SystemParameters.PrimaryScreenWidth:0}x{SystemParameters.PrimaryScreenHeight:0}, " +
             $"primary DPI {VisualTreeHelper.GetDpi(this).PixelsPerDip * 96:0}");
     }
 
@@ -94,15 +125,19 @@ public partial class OverlayWindow : Window
 
         _topmostWatchdog?.Stop();
         _topmostWatchdog = null;
+        _hoverTimer.Stop();
 
         IntPtr handle = _hwndSource?.Handle ?? IntPtr.Zero;
         if (handle != IntPtr.Zero)
         {
-            Win32.UnregisterHotKey(handle, HotkeyCycleStates);
+            Win32.UnregisterHotKey(handle, HotkeyCycleViews);
             Win32.UnregisterHotKey(handle, HotkeyQuit);
+            Win32.UnregisterHotKey(handle, HotkeyFakeRequest);
+            SetCardKeys(false);
         }
 
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ViewModel.Permissions.PropertyChanged -= OnPermissionsPropertyChanged;
         _hwndSource?.RemoveHook(WndProc);
         _hwndSource = null;
 
@@ -128,16 +163,16 @@ public partial class OverlayWindow : Window
     private void RegisterDebugHotkeys()
     {
         IntPtr handle = _hwndSource!.Handle;
-        bool cycle = Win32.RegisterHotKey(
-            handle, HotkeyCycleStates, Win32.MOD_CONTROL | Win32.MOD_ALT | Win32.MOD_NOREPEAT, Win32.VK_I);
-        bool quit = Win32.RegisterHotKey(
-            handle, HotkeyQuit, Win32.MOD_CONTROL | Win32.MOD_ALT | Win32.MOD_NOREPEAT, Win32.VK_Q);
+        const uint modifiers = Win32.MOD_CONTROL | Win32.MOD_ALT | Win32.MOD_NOREPEAT;
+        bool cycle = Win32.RegisterHotKey(handle, HotkeyCycleViews, modifiers, Win32.VK_I);
+        bool quit = Win32.RegisterHotKey(handle, HotkeyQuit, modifiers, Win32.VK_Q);
+        bool fake = Win32.RegisterHotKey(handle, HotkeyFakeRequest, modifiers, Win32.VK_P);
 
-        FileLog.Write($"Debug hotkeys registered: Ctrl+Alt+I={cycle}, Ctrl+Alt+Q={quit}");
+        FileLog.Write($"Debug hotkeys registered: Ctrl+Alt+I={cycle}, Ctrl+Alt+Q={quit}, Ctrl+Alt+P={fake}");
     }
 
     /// <summary>
-    /// Keeps the pill above every other always-on-top window. Windows stacks topmost
+    /// Keeps the island above every other always-on-top window. Windows stacks topmost
     /// windows in activation order, so a topmost window created later (a notification, an
     /// installer, another overlay) would otherwise sit above us. Re-asserting uses
     /// SWP_NOACTIVATE with no move/resize, so it is invisible and cannot steal focus.
@@ -181,15 +216,26 @@ public partial class OverlayWindow : Window
                 return new IntPtr(Win32.MA_NOACTIVATE);
 
             case Win32.WM_HOTKEY:
+                handled = true;
                 switch (wParam.ToInt32())
                 {
-                    case HotkeyCycleStates:
-                        ViewModel.CycleState();
-                        handled = true;
+                    case HotkeyCycleViews:
+                        ViewModel.CycleForcedView();
                         break;
                     case HotkeyQuit:
                         Dispatcher.BeginInvoke(new Action(Close));
-                        handled = true;
+                        break;
+                    case HotkeyFakeRequest:
+                        EnqueueFakeRequest();
+                        break;
+                    case HotkeyAllow:
+                        Decide(allow: true, "Enter");
+                        break;
+                    case HotkeyDeny:
+                        Decide(allow: false, "Esc");
+                        break;
+                    default:
+                        handled = false;
                         break;
                 }
 
@@ -202,28 +248,202 @@ public partial class OverlayWindow : Window
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) =>
         Dispatcher.InvokeAsync(Reposition);
 
+    // ---- Hover ---------------------------------------------------------------------------
+
+    private void OnPillMouseEnter(object sender, MouseEventArgs e)
+    {
+        _pointerInside = true;
+        RestartHoverTimer(HoverEnterDelay);
+        UpdateCardKeys();
+    }
+
+    private void OnPillMouseLeave(object sender, MouseEventArgs e)
+    {
+        _pointerInside = false;
+        RestartHoverTimer(HoverLeaveDelay);
+        UpdateCardKeys();
+    }
+
+    private void RestartHoverTimer(TimeSpan delay)
+    {
+        _hoverTimer.Stop();
+        _hoverTimer.Interval = delay;
+        _hoverTimer.Start();
+    }
+
+    private void OnHoverTimerTick(object? sender, EventArgs e)
+    {
+        _hoverTimer.Stop();
+        ViewModel.IsHovered = _pointerInside;
+    }
+
+    /// <summary>
+    /// Enter and Esc answer the card only while the pointer is on it. The island never has
+    /// keyboard focus, so they are registered as hotkeys for exactly that window of time.
+    /// </summary>
+    private void UpdateCardKeys() =>
+        SetCardKeys(_pointerInside && ViewModel.View == OverlayView.Permission);
+
+    private void SetCardKeys(bool register)
+    {
+        if (_hwndSource is null || register == _cardKeysRegistered)
+        {
+            return;
+        }
+
+        IntPtr handle = _hwndSource.Handle;
+        if (register)
+        {
+            bool enter = Win32.RegisterHotKey(handle, HotkeyAllow, Win32.MOD_NOREPEAT, Win32.VK_RETURN);
+            bool escape = Win32.RegisterHotKey(handle, HotkeyDeny, Win32.MOD_NOREPEAT, Win32.VK_ESCAPE);
+            FileLog.Write($"Card keys on: Enter={enter}, Esc={escape}");
+        }
+        else
+        {
+            Win32.UnregisterHotKey(handle, HotkeyAllow);
+            Win32.UnregisterHotKey(handle, HotkeyDeny);
+            FileLog.Write("Card keys off");
+        }
+
+        _cardKeysRegistered = register;
+    }
+
+    // ---- Buttons -------------------------------------------------------------------------
+
+    private void OnAllowClick(object sender, RoutedEventArgs e) => Decide(allow: true, "click");
+
+    private void OnDenyClick(object sender, RoutedEventArgs e) => Decide(allow: false, "click");
+
+    private void Decide(bool allow, string source)
+    {
+        PermissionQueueViewModel queue = ViewModel.Permissions;
+        string tool = queue.Current?.Tool ?? "";
+        bool accepted = allow ? queue.Allow() : queue.Deny();
+        FileLog.Write(accepted
+            ? $"Permission {(allow ? "allowed" : "denied")} by {source}: {tool}"
+            : $"Permission {(allow ? "allow" : "deny")} by {source} ignored (no card, or card just appeared)");
+    }
+
+    private void OnPlayPauseClick(object sender, RoutedEventArgs e) => ViewModel.Media.TogglePlayPause();
+
+    private void OnNextClick(object sender, RoutedEventArgs e) => ViewModel.Media.Next();
+
+    private void OnPreviousClick(object sender, RoutedEventArgs e) => ViewModel.Media.Previous();
+
+    /// <summary>Debug: a local card with no agent behind it, for testing the UI without hooks.</summary>
+    private void EnqueueFakeRequest()
+    {
+        _fakeRequestCount++;
+        using var input = System.Text.Json.JsonDocument.Parse(
+            $$"""{"command":"npm test -- --grep \"fake request {{_fakeRequestCount}}\"","description":"Debug request"}""");
+        PermissionRequestViewModel request = ViewModel.Permissions.Enqueue(new HookMessage
+        {
+            Id = $"debug-{_fakeRequestCount}",
+            Agent = "claude",
+            Event = PipeProtocol.PermissionRequestEvent,
+            Cwd = @"C:\dev\islet-debug",
+            Tool = "Bash",
+            Input = input.RootElement.Clone(),
+        });
+        request.Reply.ContinueWith(
+            task => FileLog.Write($"Debug request resolved: {task.Result.Decision}"),
+            TaskScheduler.Default);
+    }
+
+    // ---- View changes --------------------------------------------------------------------
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(OverlayViewModel.State))
+        if (e.PropertyName == nameof(OverlayViewModel.View))
         {
-            AnimateTo(ViewModel.State);
+            AnimateTo(ViewModel.View);
+            UpdateCardKeys();
         }
     }
 
-    private void AnimateTo(OverlayState state)
+    private void OnPermissionsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        StateMetrics metrics = MetricsByState[state];
+        if (e.PropertyName != nameof(PermissionQueueViewModel.Current))
+        {
+            return;
+        }
+
+        if (_watchedRequest is not null)
+        {
+            _watchedRequest.PropertyChanged -= OnRequestPropertyChanged;
+        }
+
+        _watchedRequest = ViewModel.Permissions.Current;
+        if (_watchedRequest is not null)
+        {
+            _watchedRequest.PropertyChanged += OnRequestPropertyChanged;
+
+            // Fade the next card in, even though the view itself stays on Permission.
+            FadeIn(PermissionContent);
+        }
+
+        UpdatePulse();
+    }
+
+    private void OnRequestPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PermissionRequestViewModel.IsOverdue))
+        {
+            UpdatePulse();
+        }
+    }
+
+    /// <summary>A request unanswered for 30 s gets a pulsing border.</summary>
+    private void UpdatePulse()
+    {
+        if (ViewModel.Permissions.Current is { IsOverdue: true })
+        {
+            if (_borderBrush.HasAnimatedProperties)
+            {
+                return;
+            }
+
+            _borderBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation
+            {
+                From = (Color)FindResource("PillBorderColor"),
+                To = (Color)FindResource("PulseColor"),
+                Duration = TimeSpan.FromMilliseconds(PulseMs),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            });
+            Pill.BorderThickness = 1.5;
+        }
+        else
+        {
+            _borderBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+            Pill.BorderThickness = 1;
+        }
+    }
+
+    private void AnimateTo(OverlayView view)
+    {
+        ViewMetrics metrics = MetricsByView[view];
         var duration = TimeSpan.FromMilliseconds(TransitionMs);
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
 
         var storyboard = new Storyboard();
-        storyboard.Children.Add(CreateAnimation(Pill, "Width", Pill.Width, metrics.Width, duration, ease));
-        storyboard.Children.Add(CreateAnimation(Pill, "Height", Pill.Height, metrics.Height, duration, ease));
-        storyboard.Children.Add(CreateCornerRadiusAnimation(
-            Pill, Pill.CornerRadius, new CornerRadius(metrics.Radius), duration, ease));
+        storyboard.Children.Add(CreateAnimation(Pill, WidthProperty, Pill.Width, metrics.Width, duration, ease));
+        storyboard.Children.Add(CreateAnimation(Pill, HeightProperty, Pill.Height, metrics.Height, duration, ease));
+        storyboard.Children.Add(CreateAnimation(
+            Pill, TrapezoidBorder.BottomInsetProperty, Pill.BottomInset, metrics.BottomInset, duration, ease));
         storyboard.Begin();
 
-        FrameworkElement content = _contentByState[state];
+        foreach ((OverlayView candidate, FrameworkElement content) in _contentByView)
+        {
+            content.Visibility = candidate == view ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        FadeIn(_contentByView[view]);
+    }
+
+    private static void FadeIn(FrameworkElement content)
+    {
         content.BeginAnimation(OpacityProperty, null);
         content.Opacity = 0;
         content.BeginAnimation(
@@ -231,13 +451,13 @@ public partial class OverlayWindow : Window
             new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(ContentFadeMs))
             {
                 BeginTime = TimeSpan.FromMilliseconds(ContentFadeDelayMs),
-                EasingFunction = ease,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
                 FillBehavior = FillBehavior.HoldEnd,
             });
     }
 
     private static DoubleAnimation CreateAnimation(
-        DependencyObject target, string property, double from, double to, TimeSpan duration, IEasingFunction ease)
+        DependencyObject target, DependencyProperty property, double from, double to, TimeSpan duration, IEasingFunction ease)
     {
         var animation = new DoubleAnimation(from, to, duration)
         {
@@ -249,21 +469,5 @@ public partial class OverlayWindow : Window
         return animation;
     }
 
-    private static CornerRadiusAnimation CreateCornerRadiusAnimation(
-        DependencyObject target, CornerRadius from, CornerRadius to, TimeSpan duration, IEasingFunction ease)
-    {
-        var animation = new CornerRadiusAnimation
-        {
-            From = from,
-            To = to,
-            Duration = duration,
-            EasingFunction = ease,
-            FillBehavior = FillBehavior.HoldEnd,
-        };
-        Storyboard.SetTarget(animation, target);
-        Storyboard.SetTargetProperty(animation, new PropertyPath(nameof(Border.CornerRadius)));
-        return animation;
-    }
-
-    private readonly record struct StateMetrics(double Width, double Height, double Radius);
+    private readonly record struct ViewMetrics(double Width, double Height, double BottomInset);
 }

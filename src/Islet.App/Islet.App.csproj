@@ -12,4 +12,18 @@
     <RootNamespace>Islet.App</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- The app only uses the shim's protocol types; it never runs the referenced exe. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Shared pipe protocol and product constants. -->
+    <ProjectReference Include="..\Islet.Hook\Islet.Hook.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Islet.Tests" />
+  </ItemGroup>
+
 </Project>

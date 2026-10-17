@@ -22,6 +22,9 @@ internal static class Win32
 
     public const uint VK_I = 0x49;
     public const uint VK_Q = 0x51;
+    public const uint VK_P = 0x50;
+    public const uint VK_RETURN = 0x0D;
+    public const uint VK_ESCAPE = 0x1B;
 
     public static readonly IntPtr HWND_TOPMOST = new(-1);
 

@@ -1,49 +1,117 @@
 using System.ComponentModel;
-using System.Runtime.CompilerServices;
 
 namespace Islet.App.ViewModels;
 
-/// <summary>The three pill sizes. Compact shows media or a one-line agent status.</summary>
-public enum OverlayState
+/// <summary>What the island is showing. Each view has its own size.</summary>
+public enum OverlayView
 {
-    Collapsed,
-    Compact,
-    Expanded,
+    /// <summary>Nothing to show: a thin tab at the top of the screen.</summary>
+    Idle,
+
+    /// <summary>One line: art, title, artist.</summary>
+    MediaCompact,
+
+    /// <summary>One line: agent, repo, and what it is doing.</summary>
+    AgentCompact,
+
+    /// <summary>Art, title, artist and transport controls, while hovered.</summary>
+    MediaExpanded,
+
+    /// <summary>The permission card. Takes priority over everything else.</summary>
+    Permission,
 }
 
-/// <summary>
-/// State of the pill itself. Media and agent state get their own view models in
-/// the later milestones and will feed this one.
-/// </summary>
-public sealed class OverlayViewModel : INotifyPropertyChanged
+/// <summary>Picks the view from media state, pending permission requests and hover.</summary>
+public sealed class OverlayViewModel : ObservableObject
 {
-    private OverlayState _state = OverlayState.Collapsed;
+    private static readonly OverlayView?[] DebugCycle =
+        [null, OverlayView.Idle, OverlayView.MediaCompact, OverlayView.MediaExpanded];
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    private OverlayView _view = OverlayView.Idle;
+    private bool _isHovered;
+    private OverlayView? _forcedView;
 
-    public OverlayState State
+    public OverlayViewModel(MediaViewModel media, PermissionQueueViewModel permissions, AgentSessionsViewModel agents)
     {
-        get => _state;
+        Media = media;
+        Permissions = permissions;
+        Agents = agents;
+        Media.PropertyChanged += OnChildChanged;
+        Permissions.PropertyChanged += OnChildChanged;
+        Agents.PropertyChanged += OnChildChanged;
+    }
+
+    public MediaViewModel Media { get; }
+
+    public AgentSessionsViewModel Agents { get; }
+
+    public PermissionQueueViewModel Permissions { get; }
+
+    public OverlayView View
+    {
+        get => _view;
+        private set => SetField(ref _view, value);
+    }
+
+    public bool IsHovered
+    {
+        get => _isHovered;
         set
         {
-            if (_state == value)
+            if (SetField(ref _isHovered, value))
             {
-                return;
+                UpdateView();
             }
-
-            _state = value;
-            OnPropertyChanged();
         }
     }
 
-    /// <summary>Debug path used by the hotkey and by <c>--demo</c>.</summary>
-    public void CycleState() => State = State switch
+    /// <summary>Debug override from Ctrl+Alt+I or --demo. Null means automatic.</summary>
+    public OverlayView? ForcedView
     {
-        OverlayState.Collapsed => OverlayState.Compact,
-        OverlayState.Compact => OverlayState.Expanded,
-        _ => OverlayState.Collapsed,
-    };
+        get => _forcedView;
+        private set
+        {
+            if (SetField(ref _forcedView, value))
+            {
+                UpdateView();
+            }
+        }
+    }
 
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    /// <summary>Debug: automatic → idle → compact → expanded → automatic.</summary>
+    public void CycleForcedView()
+    {
+        int index = Array.IndexOf(DebugCycle, ForcedView);
+        ForcedView = DebugCycle[(index + 1) % DebugCycle.Length];
+    }
+
+    private void OnChildChanged(object? sender, PropertyChangedEventArgs e) => UpdateView();
+
+    private void UpdateView() => View = ComputeView();
+
+    private OverlayView ComputeView()
+    {
+        if (Permissions.Current is not null)
+        {
+            return OverlayView.Permission;
+        }
+
+        if (ForcedView is { } forced)
+        {
+            return forced;
+        }
+
+        if (IsHovered && Media.HasSession)
+        {
+            return OverlayView.MediaExpanded;
+        }
+
+        // A running agent outranks the music line; hovering still opens the media controls above.
+        if (Agents.Current is not null)
+        {
+            return OverlayView.AgentCompact;
+        }
+
+        return Media.HasSession && Media.IsPlaying ? OverlayView.MediaCompact : OverlayView.Idle;
+    }
 }

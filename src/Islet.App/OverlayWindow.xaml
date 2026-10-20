@@ -5,7 +5,7 @@
         xmlns:ui="clr-namespace:Islet.App.Ui"
         Title="{x:Static local:IsletInfo.Name}"
         Width="496"
-        Height="100"
+        Height="124"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="{x:Null}"
@@ -21,7 +21,7 @@
 
     <!--
       The window is fixed at the size of the largest view plus shadow room; the
-      island inside it animates its own width/height/inset, so contents never reflow
+      island inside it animates its own width/height/corners, so contents never reflow
       the window. Transparent window areas fall through to the apps below. The island's
       top edge sits flush with the top of the screen.
     -->
@@ -101,18 +101,18 @@
     </Window.Resources>
 
     <Grid>
-        <ui:TrapezoidBorder x:Name="Pill"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Top"
-                            Width="220"
-                            Height="22"
-                            BottomInset="12"
-                            BottomCornerRadius="5"
-                            Background="{StaticResource PillBackground}"
-                            BorderThickness="1">
-            <ui:TrapezoidBorder.Effect>
+        <ui:IslandBorder x:Name="Pill"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Top"
+                         Width="200"
+                         Height="22"
+                         CornerRadius="11"
+                         ShoulderRadius="6"
+                         Background="{StaticResource PillBackground}"
+                         BorderThickness="1">
+            <ui:IslandBorder.Effect>
                 <DropShadowEffect BlurRadius="18" ShadowDepth="0" Opacity="0.45" Color="Black" />
-            </ui:TrapezoidBorder.Effect>
+            </ui:IslandBorder.Effect>
 
             <Grid>
                 <!-- Idle: a short red line through the middle. -->
@@ -396,6 +396,6 @@
                     </StackPanel>
                 </Grid>
             </Grid>
-        </ui:TrapezoidBorder>
+        </ui:IslandBorder>
     </Grid>
 </Window>

@@ -15,6 +15,8 @@ public static class Monitors
     private const int MonitorInfoPrimary = 1;
     private const int MdtEffectiveDpi = 0;
     private const uint DefaultDpi = 96;
+    private const int VRefresh = 116;
+    private const int DefaultRefreshRate = 60;
 
     /// <summary>All attached monitors, primary first.</summary>
     public static IReadOnlyList<MonitorInfo> List()
@@ -82,6 +84,27 @@ public static class Monitors
         return (monitor.Left + ((monitor.Width - widthPx) / 2), monitor.Top);
     }
 
+    /// <summary>The monitor's refresh rate in Hz, or 60 when Windows won't say.</summary>
+    public static int RefreshRate(MonitorInfo monitor)
+    {
+        IntPtr hdc = CreateDC(null, monitor.DeviceName, null, IntPtr.Zero);
+        if (hdc == IntPtr.Zero)
+        {
+            return DefaultRefreshRate;
+        }
+
+        try
+        {
+            // 0 and 1 mean "the hardware default", which says nothing about the rate.
+            int rate = GetDeviceCaps(hdc, VRefresh);
+            return rate > 1 ? rate : DefaultRefreshRate;
+        }
+        finally
+        {
+            DeleteDC(hdc);
+        }
+    }
+
     private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr hdc, ref Rect rect, IntPtr data);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -112,6 +135,16 @@ public static class Monitors
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfoEx info);
+
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr CreateDC(string? driver, string device, string? output, IntPtr devMode);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDeviceCaps(IntPtr hdc, int index);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteDC(IntPtr hdc);
 
     [DllImport("shcore.dll")]
     private static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);

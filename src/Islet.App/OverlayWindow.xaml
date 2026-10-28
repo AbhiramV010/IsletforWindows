@@ -17,7 +17,7 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display"
-        FontFamily="pack://application:,,,/Fonts/#Overpass Mono, Cascadia Mono, Consolas">
+        FontFamily="Segoe UI Variable Text, Segoe UI">
 
     <!--
       The window is fixed at the size of the largest view plus shadow room; the
@@ -27,13 +27,13 @@
     -->
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
-        <SolidColorBrush x:Key="PillBackground" Color="#F00D0D11" />
-        <Color x:Key="PillBorderColor">#80FFFFFF</Color>
-        <Color x:Key="PulseColor">#FFF5A524</Color>
-        <SolidColorBrush x:Key="TextPrimary" Color="#F2FFFFFF" />
-        <SolidColorBrush x:Key="TextSecondary" Color="#B3FFFFFF" />
-        <SolidColorBrush x:Key="TextTertiary" Color="#66FFFFFF" />
-        <SolidColorBrush x:Key="Accent" Color="#7DD3FC" />
+        <SolidColorBrush x:Key="PillBackground" Color="#FA000000" />
+        <Color x:Key="PillBorderColor">#24FFFFFF</Color>
+        <Color x:Key="PulseColor">#FFFF9F0A</Color>
+        <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFFFF" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#99EBEBF5" />
+        <SolidColorBrush x:Key="TextTertiary" Color="#4DEBEBF5" />
+        <SolidColorBrush x:Key="Accent" Color="#0A84FF" />
         <SolidColorBrush x:Key="AgentClaude" Color="#E8A27C" />
         <SolidColorBrush x:Key="IdleLine" Color="#EF4444" />
         <SolidColorBrush x:Key="AlarmAmber" Color="#F5A524" />
@@ -78,7 +78,7 @@
 
         <Style x:Key="AllowButton" TargetType="Button" BasedOn="{StaticResource IslandButton}">
             <Setter Property="Background" Value="{StaticResource Accent}" />
-            <Setter Property="Foreground" Value="#FF0D0D11" />
+            <Setter Property="Foreground" Value="#FFFFFFFF" />
         </Style>
 
         <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource IslandButton}">
@@ -92,11 +92,24 @@
         </Style>
 
         <Style TargetType="ToolTip">
-            <Setter Property="Background" Value="#F21B1B21" />
+            <Setter Property="Background" Value="#F21C1C1E" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-            <Setter Property="BorderBrush" Value="#33FFFFFF" />
-            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
+            <Setter Property="Padding" Value="12,9" />
             <Setter Property="MaxWidth" Value="640" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
@@ -111,7 +124,7 @@
                          Background="{StaticResource PillBackground}"
                          BorderThickness="1">
             <ui:IslandBorder.Effect>
-                <DropShadowEffect BlurRadius="18" ShadowDepth="0" Opacity="0.45" Color="Black" />
+                <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.4" Color="Black" />
             </ui:IslandBorder.Effect>
 
             <Grid>

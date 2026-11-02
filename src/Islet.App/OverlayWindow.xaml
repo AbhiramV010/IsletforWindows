@@ -238,8 +238,8 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Agent finished: "Claude is done". Click to dismiss. -->
-                <Grid x:Name="AgentDoneContent" Margin="42,8,42,10" Visibility="Collapsed"
+                <!-- Agent finished: "Claude is done", in a capsule floating below the edge. Click to dismiss. -->
+                <Grid x:Name="AgentDoneContent" Margin="30,8,30,9" Visibility="Collapsed"
                       DataContext="{Binding Agents}" Background="Transparent"
                       MouseLeftButtonUp="OnAgentDoneClick" Cursor="Hand">
                     <StackPanel VerticalAlignment="Center">
@@ -248,7 +248,7 @@
                             <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
                             <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
                         </TextBlock>
-                        <TextBlock Margin="0,4,0,0" FontSize="13" TextTrimming="CharacterEllipsis">
+                        <TextBlock Margin="0,2,0,0" FontSize="12" TextTrimming="CharacterEllipsis">
                             <Run Text="{Binding Current.DoneHeadline, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
                             <Run Text="  " />
                             <Run Text="Go back to your session" FontSize="11" Foreground="{StaticResource TextSecondary}" />
@@ -293,8 +293,8 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Notification: a Windows toast, shown for a few seconds. Click to dismiss. -->
-                <Grid x:Name="NotificationContent" Margin="42,8,42,10" Visibility="Collapsed"
+                <!-- Notification: a Windows toast, shown for a few seconds in a capsule floating below the edge. Click to dismiss. -->
+                <Grid x:Name="NotificationContent" Margin="30,8,30,9" Visibility="Collapsed"
                       DataContext="{Binding Notifications}" Background="Transparent" MouseLeftButtonUp="OnNotificationClick"
                       Cursor="Hand">
                     <StackPanel VerticalAlignment="Center">
@@ -320,7 +320,7 @@
                                            Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
                             </Border>
                         </Grid>
-                        <TextBlock Margin="0,4,0,0" FontSize="11" TextTrimming="CharacterEllipsis">
+                        <TextBlock Margin="0,2,0,0" FontSize="11" TextTrimming="CharacterEllipsis">
                             <Run Text="{Binding Current.Title, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
                             <Run Text="  " />
                             <Run Text="{Binding Current.Body, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />

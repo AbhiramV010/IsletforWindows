@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using Islet.App.Interop;
 using Islet.App.Notifications;
@@ -18,22 +19,47 @@ namespace Islet.App;
 /// <summary>
 /// The island: a Dynamic Island style capsule hanging from the top center of the
 /// primary monitor, flush with the screen edge. Never activates (WS_EX_NOACTIVATE |
-/// WS_EX_TOOLWINDOW plus WM_MOUSEACTIVATE), and animates between views by resizing
-/// the shape inside a fixed-size transparent window.
+/// WS_EX_TOOLWINDOW plus WM_MOUSEACTIVATE), slides out of the top edge on startup, and
+/// animates between views by resizing the shape inside a fixed-size transparent window.
+/// Toasts float free of the edge as a capsule, then float back up and dock.
 /// </summary>
 public partial class OverlayWindow : Window
 {
-    /// <summary>Long enough for the spring to settle; most of the motion is over in the first half.</summary>
-    private const double TransitionMs = 520;
-    private const double ContentFadeMs = 240;
-    private const double ContentFadeDelayMs = 90;
-    private const double ContentFadeOutMs = 120;
-    private const double ContentScaleFrom = 0.92;
+    /// <summary>
+    /// Spring response (about the period, in seconds) and damping for shape changes. Width
+    /// leads height slightly, and growing gets a little bounce that shrinking back does not.
+    /// </summary>
+    private const double WidthResponse = 0.42;
+    private const double HeightResponse = 0.5;
+    private const double GrowDamping = 0.72;
+    private const double ShrinkDamping = 0.88;
 
-    /// <summary>A system notification drops the island this far off the screen edge, with a bounce.</summary>
-    private const double DetachOffset = 24;
-    private const double DetachMs = 760;
-    private const double DetachDamping = 0.4;
+    /// <summary>Sliding out of the top edge: no overshoot, or a gap would open above the island.</summary>
+    private const double RevealResponse = 0.55;
+    private const double RevealDamping = 0.92;
+    private const double RevealWidthFrom = 0.5;
+    private const double RetractResponse = 0.38;
+
+    /// <summary>Retracted, the island sits this far above the screen edge, shadow and all.</summary>
+    private const double RetractMargin = 32;
+
+    /// <summary>
+    /// A toast floats down off the screen edge as a free capsule, with a little bounce,
+    /// then floats back up and docks. It has fully detached by this share of the way down.
+    /// </summary>
+    private const double FloatOffset = 14;
+    private const double FloatDetachedAt = 0.6;
+    private const double FloatResponse = 0.55;
+    private const double FloatDamping = 0.68;
+    private const double DockResponse = 0.5;
+    private const double DockDamping = 0.9;
+
+    private const double ContentFadeMs = 260;
+    private const double ContentFadeDelayMs = 70;
+    private const double ContentFadeOutMs = 130;
+    private const double ContentScaleMs = 480;
+    private const double ContentScaleFrom = 0.9;
+    private const double ContentBlur = 8;
     private const double TopmostReassertMs = 1000;
     private const double PulseMs = 900;
 
@@ -54,9 +80,9 @@ public partial class OverlayWindow : Window
         [OverlayView.Idle] = new ViewMetrics(200, 22, 11),
         [OverlayView.MediaCompact] = new ViewMetrics(320, 30, 15),
         [OverlayView.AgentCompact] = new ViewMetrics(320, 30, 15),
-        [OverlayView.AgentDone] = new ViewMetrics(460, 61, 24),
+        [OverlayView.AgentDone] = new ViewMetrics(360, 50, 25),
         [OverlayView.ClockCompact] = new ViewMetrics(320, 30, 15),
-        [OverlayView.Notification] = new ViewMetrics(460, 61, 24),
+        [OverlayView.Notification] = new ViewMetrics(360, 50, 25),
         [OverlayView.MediaExpanded] = new ViewMetrics(420, 61, 24),
         [OverlayView.Permission] = new ViewMetrics(460, 73, 26),
     };
@@ -67,8 +93,17 @@ public partial class OverlayWindow : Window
     /// <summary>Created in code: XAML brushes get frozen, and this one animates when a request is overdue.</summary>
     private readonly SolidColorBrush _borderBrush;
 
-    /// <summary>Drops the island off the top edge for a system notification.</summary>
-    private readonly TranslateTransform _drop = new();
+    /// <summary>Slides the island out of, and back into, the top edge of the screen.</summary>
+    private readonly TranslateTransform _slide = new();
+    private readonly SpringAnimator _springs = new();
+    private readonly Spring _width;
+    private readonly Spring _height;
+    private readonly Spring _corner;
+    private readonly Spring _offset;
+
+    /// <summary>Starts tucked above the screen edge, until the first frame has rendered.</summary>
+    private bool _retracted = true;
+    private bool _contentRendered;
     private HwndSource? _hwndSource;
     private DispatcherTimer? _topmostWatchdog;
     private bool _pointerInside;
@@ -78,7 +113,6 @@ public partial class OverlayWindow : Window
     private readonly FullscreenWatcher _fullscreen;
     private int _fakeRequestCount;
     private int _frameRate = 60;
-    private int _transition;
 
     public OverlayWindow(OverlayViewModel viewModel, AppSettings settings, FullscreenWatcher fullscreen)
     {
@@ -89,8 +123,20 @@ public partial class OverlayWindow : Window
 
         _borderBrush = new SolidColorBrush((Color)FindResource("PillBorderColor"));
         Pill.BorderBrush = _borderBrush;
-        Pill.RenderTransform = _drop;
+        Pill.RenderTransform = _slide;
         DataContext = ViewModel;
+
+        _width = _springs.Add(Pill.Width, value => Pill.Width = value);
+        _height = _springs.Add(Pill.Height, value => Pill.Height = value);
+        _corner = _springs.Add(Pill.CornerRadius, value => Pill.CornerRadius = value);
+        _offset = _springs.Add(0, value =>
+        {
+            // The shape follows the offset, so it is fully docked exactly when it touches the edge.
+            _slide.Y = value;
+            Pill.Detachment = Math.Clamp(value / (FloatOffset * FloatDetachedAt), 0, 1);
+        });
+        _offset.Snap(-(Pill.Height + RetractMargin));
+        _springs.Settled += OnSpringsSettled;
 
         _contentByView = new Dictionary<OverlayView, FrameworkElement>
         {
@@ -106,7 +152,8 @@ public partial class OverlayWindow : Window
 
         foreach (FrameworkElement content in _contentByView.Values)
         {
-            content.RenderTransformOrigin = new Point(0.5, 0.3);
+            // Anchored at the top, so contents unfold downward with the island.
+            content.RenderTransformOrigin = new Point(0.5, 0);
             content.RenderTransform = new ScaleTransform();
         }
 
@@ -147,21 +194,62 @@ public partial class OverlayWindow : Window
             _hwndSource.Handle, Win32.HWND_TOPMOST, x, y, 0, 0, Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
     }
 
-    /// <summary>Steps aside for a fullscreen app, unless the view is one that needs you.</summary>
+    /// <summary>
+    /// Steps aside for a fullscreen app, unless the view is one that needs you: slides up into
+    /// the screen edge, then hides once out of sight. Coming back, it slides out again.
+    /// </summary>
     private void UpdateVisibility()
     {
-        if (_hwndSource is null)
+        if (_hwndSource is null || !_contentRendered)
         {
             return;
         }
 
         bool hide = OverlayVisibility.ShouldHide(_settings.HideInFullscreen, _fullscreen.IsFullscreen, ViewModel.View);
-        Visibility target = hide ? Visibility.Hidden : Visibility.Visible;
-        if (Visibility != target)
+        if (hide == _retracted)
         {
-            Visibility = target;
-            FileLog.Write(hide ? "Hidden: a fullscreen app is in front" : "Shown again");
+            return;
         }
+
+        _retracted = hide;
+        if (hide)
+        {
+            Pill.UseLayoutRounding = false;
+            _offset.AnimateTo(-(_height.Target + RetractMargin), RetractResponse, 1);
+            FileLog.Write("Hidden: a fullscreen app is in front");
+            return;
+        }
+
+        Visibility = Visibility.Visible;
+        Pill.UseLayoutRounding = false;
+        double width = MetricsByView[ViewModel.View].Width;
+        _width.Snap(width * RevealWidthFrom);
+        _width.AnimateTo(width, RevealResponse, GrowDamping);
+        _offset.AnimateTo(OffsetFor(ViewModel.View), RevealResponse, RevealDamping);
+        FileLog.Write("Shown");
+    }
+
+    private static double OffsetFor(OverlayView view) => Floats(view) ? FloatOffset : 0;
+
+    /// <summary>Toasts float: a Windows notification, and an agent (Claude, Codex) finishing.</summary>
+    private static bool Floats(OverlayView view) => view is OverlayView.Notification or OverlayView.AgentDone;
+
+    private void OnSpringsSettled()
+    {
+        Pill.UseLayoutRounding = true;
+        if (_retracted)
+        {
+            Visibility = Visibility.Hidden;
+        }
+    }
+
+    protected override void OnContentRendered(EventArgs e)
+    {
+        base.OnContentRendered(e);
+
+        // Slide out only once there is a frame on screen, so the first few frames aren't lost to startup.
+        _contentRendered = true;
+        UpdateVisibility();
     }
 
     private void OnSettingsChanged()
@@ -527,37 +615,29 @@ public partial class OverlayWindow : Window
     private void AnimateTo(OverlayView view)
     {
         ViewMetrics metrics = MetricsByView[view];
-        var duration = TimeSpan.FromMilliseconds(TransitionMs);
-        var ease = new SpringEase();
+        double damping = metrics.Height > _height.Target ? GrowDamping : ShrinkDamping;
 
         // Layout rounding would snap the edges to whole pixels every frame, so the spring's
         // gentle tail would judder in 1 px steps. Off while moving, back on once settled.
-        int transition = ++_transition;
         Pill.UseLayoutRounding = false;
 
-        var storyboard = new Storyboard();
-        Timeline.SetDesiredFrameRate(storyboard, _frameRate);
-        storyboard.Children.Add(CreateAnimation(Pill, WidthProperty, Pill.Width, metrics.Width, duration, ease));
-        storyboard.Children.Add(CreateAnimation(Pill, HeightProperty, Pill.Height, metrics.Height, duration, ease));
-        storyboard.Children.Add(CreateAnimation(
-            Pill, IslandBorder.CornerRadiusProperty, Pill.CornerRadius, metrics.CornerRadius, duration, ease));
-        // A system notification floats free of the screen edge with a bounce; anything else
-        // rises back up and docks with the same spring as the resize.
-        bool detach = view == OverlayView.Notification;
-        var dropDuration = detach ? TimeSpan.FromMilliseconds(DetachMs) : duration;
-        var dropEase = detach ? new SpringEase { Damping = DetachDamping } : ease;
-        storyboard.Children.Add(CreateAnimation(
-            _drop, TranslateTransform.YProperty, _drop.Y, detach ? DetachOffset : 0, dropDuration, dropEase));
-        storyboard.Children.Add(CreateAnimation(
-            Pill, IslandBorder.DetachmentProperty, Pill.Detachment, detach ? 1 : 0, duration, ease));
-        storyboard.Completed += (_, _) =>
+        // Springs pick up from wherever an interrupted change left them, velocity and all.
+        _width.AnimateTo(metrics.Width, WidthResponse, damping);
+        _height.AnimateTo(metrics.Height, HeightResponse, damping);
+        _corner.AnimateTo(metrics.CornerRadius, HeightResponse, damping);
+        if (_retracted)
         {
-            if (transition == _transition)
-            {
-                Pill.UseLayoutRounding = true;
-            }
-        };
-        storyboard.Begin();
+            // Out of sight however tall the new view is.
+            _offset.AnimateTo(-(metrics.Height + RetractMargin), RetractResponse, 1);
+        }
+        else if (Floats(view))
+        {
+            _offset.AnimateTo(FloatOffset, FloatResponse, FloatDamping);
+        }
+        else
+        {
+            _offset.AnimateTo(0, DockResponse, DockDamping);
+        }
 
         foreach ((OverlayView candidate, FrameworkElement content) in _contentByView)
         {
@@ -585,10 +665,25 @@ public partial class OverlayWindow : Window
         content.Opacity = from;
         content.BeginAnimation(OpacityProperty, Fade(from, 1, duration, delay, ease));
 
+        // Grows in on a spring of its own, so it settles with the island rather than ahead of it.
         double scaleFrom = ContentScaleFrom + ((1 - ContentScaleFrom) * from);
+        var scaleDuration = TimeSpan.FromMilliseconds(ContentScaleMs);
         var scale = (ScaleTransform)content.RenderTransform;
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, Fade(scaleFrom, 1, duration, delay, ease));
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, Fade(scaleFrom, 1, duration, delay, ease));
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, Fade(scaleFrom, 1, scaleDuration, delay, new SpringEase()));
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, Fade(scaleFrom, 1, scaleDuration, delay, new SpringEase()));
+
+        // Comes into focus as it fades in. The blur goes once sharp, so text renders crisply again.
+        var blur = new BlurEffect { Radius = ContentBlur * (1 - from), RenderingBias = RenderingBias.Performance };
+        content.Effect = blur;
+        DoubleAnimation sharpen = Fade(blur.Radius, 0, duration, delay, ease);
+        sharpen.Completed += (_, _) =>
+        {
+            if (content.Effect == blur)
+            {
+                content.Effect = null;
+            }
+        };
+        blur.BeginAnimation(BlurEffect.RadiusProperty, sharpen);
     }
 
     /// <summary>Fades the old view out under the new one, then collapses it, unless it has become current again.</summary>
@@ -610,6 +705,10 @@ public partial class OverlayWindow : Window
         var scale = (ScaleTransform)content.RenderTransform;
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, Fade(scale.ScaleX, 0.97, duration, TimeSpan.Zero, ease));
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, Fade(scale.ScaleY, 0.97, duration, TimeSpan.Zero, ease));
+
+        var blur = content.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
+        content.Effect = blur;
+        blur.BeginAnimation(BlurEffect.RadiusProperty, Fade(blur.Radius, ContentBlur, duration, TimeSpan.Zero, ease));
     }
 
     private DoubleAnimation Fade(double from, double to, TimeSpan duration, TimeSpan delay, IEasingFunction ease)
@@ -621,19 +720,6 @@ public partial class OverlayWindow : Window
             FillBehavior = FillBehavior.HoldEnd,
         };
         Timeline.SetDesiredFrameRate(animation, _frameRate);
-        return animation;
-    }
-
-    private static DoubleAnimation CreateAnimation(
-        DependencyObject target, DependencyProperty property, double from, double to, TimeSpan duration, IEasingFunction ease)
-    {
-        var animation = new DoubleAnimation(from, to, duration)
-        {
-            EasingFunction = ease,
-            FillBehavior = FillBehavior.HoldEnd,
-        };
-        Storyboard.SetTarget(animation, target);
-        Storyboard.SetTargetProperty(animation, new PropertyPath(property));
         return animation;
     }
 

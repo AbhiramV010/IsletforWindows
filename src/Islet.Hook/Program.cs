@@ -4,11 +4,12 @@ using Islet.Hook.Protocol;
 // Usage:
 //   Islet.Hook.exe <agent>                  run as a hook: payload on stdin, decision on stdout
 //   Islet.Hook.exe --print-config claude    print the settings.json hooks block for this exe
+//   Islet.Hook.exe --print-config claude --wsl   same, for an agent running inside WSL (/mnt/c/... path)
 try
 {
-    if (args is ["--print-config", var agent])
+    if (args is ["--print-config", var agent, ..] && (args.Length == 2 || args is [_, _, "--wsl"]))
     {
-        string? config = HookConfig.Build(agent, Environment.ProcessPath ?? "Islet.Hook.exe");
+        string? config = HookConfig.Build(agent, Environment.ProcessPath ?? "Islet.Hook.exe", wsl: args.Length == 3);
         Console.Out.Write(config ?? $"No config template for '{agent}'.{Environment.NewLine}");
         return 0;
     }

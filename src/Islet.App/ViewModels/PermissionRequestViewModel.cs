@@ -46,6 +46,9 @@ public sealed class PermissionRequestViewModel : ObservableObject
 
     public string AgentName { get; }
 
+    /// <summary>"Claude" for Claude Code, otherwise the agent's name.</summary>
+    public string ShortName => AgentName == "Claude Code" ? "Claude" : AgentName;
+
     public Brush AgentBrush { get; }
 
     public string Repo { get; }

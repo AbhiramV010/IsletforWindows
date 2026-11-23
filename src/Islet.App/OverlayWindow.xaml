@@ -180,13 +180,13 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Margin="0,0,10,0" VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" FontSize="11">
-                        <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
+                        <Run Text="{Binding Current.ShortName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
                         <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
-                        <Run Text="{Binding Current.Repo, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
+                        <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
                     </TextBlock>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Current.Status}" FontSize="10" Foreground="{StaticResource TextSecondary}"
-                                   MaxWidth="120" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Current.ShortStatus}" FontSize="10" Foreground="{StaticResource TextSecondary}"
+                                   MaxWidth="90" TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{Binding MoreBadge}" FontSize="9" FontWeight="SemiBold" Margin="6,0,0,0"
                                    Foreground="{StaticResource TextTertiary}" />
                     </StackPanel>
@@ -239,21 +239,16 @@
                 </Grid>
 
                 <!-- Agent finished: "Claude is done", in a capsule floating below the edge. Click to dismiss. -->
-                <Grid x:Name="AgentDoneContent" Margin="30,8,30,9" Visibility="Collapsed"
+                <Grid x:Name="AgentDoneContent" Margin="22,0" Visibility="Collapsed"
                       DataContext="{Binding Agents}" Background="Transparent"
                       MouseLeftButtonUp="OnAgentDoneClick" Cursor="Hand">
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock FontSize="10" TextTrimming="CharacterEllipsis">
-                            <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
-                            <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
-                            <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
-                        </TextBlock>
-                        <TextBlock Margin="0,2,0,0" FontSize="12" TextTrimming="CharacterEllipsis">
-                            <Run Text="{Binding Current.DoneHeadline, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
-                            <Run Text="  " />
-                            <Run Text="Go back to your session" FontSize="11" Foreground="{StaticResource TextSecondary}" />
-                        </TextBlock>
-                    </StackPanel>
+                    <TextBlock FontSize="11" TextTrimming="CharacterEllipsis"
+                               HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Run Text="{Binding Current.ShortName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
+                        <Run Text="is done" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
+                        <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
+                        <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
+                    </TextBlock>
                 </Grid>
 
                 <!-- Windows Clock app: the stopwatch, running timer or next alarm it is showing. -->
@@ -338,57 +333,36 @@
                 </Grid>
 
                 <!-- Permission card: details on the left, Allow / Deny on the right. -->
-                <Grid x:Name="PermissionContent" Margin="42,8,42,10" Visibility="Collapsed"
+                <Grid x:Name="PermissionContent" Margin="26,0,16,0" Visibility="Collapsed"
                       DataContext="{Binding Permissions}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock FontSize="10" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
-                                <Run Text="{Binding Current.AgentName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
-                                <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
-                                <Run Text="{Binding Current.Repo, Mode=OneWay}" Foreground="{StaticResource TextSecondary}" />
-                            </TextBlock>
-                            <Border Grid.Column="1" CornerRadius="7" Padding="6,0" Height="14" Margin="6,0,0,0"
-                                    Background="#33FFFFFF" VerticalAlignment="Center">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding MoreBadge}" Value="{x:Null}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <TextBlock Text="{Binding MoreBadge}" FontSize="9" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
-                            </Border>
-                        </Grid>
+                    <!-- One line: agent · tool command, trimmed to fit. Hover for the full text. -->
+                    <TextBlock FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                               Background="Transparent"
+                               ToolTipService.InitialShowDelay="350"
+                               ToolTipService.ShowDuration="60000">
+                        <Run Text="{Binding Current.ShortName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Current.AgentBrush, Mode=OneWay}" />
+                        <Run Text=" · " Foreground="{StaticResource TextTertiary}" />
+                        <Run Text="{Binding Current.Headline, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
+                        <Run Text=" " />
+                        <Run Text="{Binding Current.Preview, Mode=OneWay}" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock.ToolTip>
+                            <ToolTip>
+                                <TextBlock Text="{Binding Current.FullText}" TextWrapping="Wrap"
+                                           FontFamily="{StaticResource MonoFont}" FontSize="11" />
+                            </ToolTip>
+                        </TextBlock.ToolTip>
+                    </TextBlock>
 
-                        <TextBlock Margin="0,4,0,0" FontSize="11" TextTrimming="CharacterEllipsis"
-                                   Background="Transparent"
-                                   ToolTipService.InitialShowDelay="350"
-                                   ToolTipService.ShowDuration="60000">
-                            <Run Text="{Binding Current.Headline, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" />
-                            <Run Text="  " />
-                            <Run Text="{Binding Current.Preview, Mode=OneWay}" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource TextSecondary}" />
-                            <TextBlock.ToolTip>
-                                <ToolTip>
-                                    <TextBlock Text="{Binding Current.FullText}" TextWrapping="Wrap"
-                                               FontFamily="{StaticResource MonoFont}" FontSize="11" />
-                                </ToolTip>
-                            </TextBlock.ToolTip>
-                        </TextBlock>
-                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding MoreBadge}" FontSize="9" FontWeight="SemiBold"
+                               Margin="8,0,0,0" Foreground="{StaticResource TextTertiary}" VerticalAlignment="Center" />
 
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
                                 <Style.Triggers>
@@ -398,14 +372,10 @@
                                 </Style.Triggers>
                             </Style>
                         </StackPanel.Style>
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="DenyButton" Style="{StaticResource IslandButton}"
-                                    Content="Deny" Click="OnDenyClick" />
-                            <Button x:Name="AllowButton" Style="{StaticResource AllowButton}"
-                                    Margin="8,0,0,0" Content="Allow" Click="OnAllowClick" />
-                        </StackPanel>
-                        <TextBlock FontSize="9" Margin="0,3,0,0" HorizontalAlignment="Right"
-                                   Foreground="{StaticResource TextTertiary}" Text="Enter allow · Esc deny" />
+                        <Button x:Name="DenyButton" Style="{StaticResource IslandButton}" Height="22" Padding="10,0"
+                                Content="Deny" ToolTip="Esc" Click="OnDenyClick" />
+                        <Button x:Name="AllowButton" Style="{StaticResource AllowButton}" Height="22" Padding="10,0"
+                                Margin="6,0,0,0" Content="Allow" ToolTip="Enter" Click="OnAllowClick" />
                     </StackPanel>
                 </Grid>
             </Grid>

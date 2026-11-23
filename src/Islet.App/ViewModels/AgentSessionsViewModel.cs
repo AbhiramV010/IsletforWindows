@@ -45,6 +45,7 @@ public sealed class AgentSessionViewModel : ObservableObject
             if (SetField(ref _state, value))
             {
                 OnPropertyChanged(nameof(Status));
+                OnPropertyChanged(nameof(ShortStatus));
             }
         }
     }
@@ -57,6 +58,7 @@ public sealed class AgentSessionViewModel : ObservableObject
             if (SetField(ref _lastTool, value))
             {
                 OnPropertyChanged(nameof(Status));
+                OnPropertyChanged(nameof(ShortStatus));
             }
         }
     }
@@ -66,6 +68,14 @@ public sealed class AgentSessionViewModel : ObservableObject
     {
         AgentState.Working => string.IsNullOrEmpty(LastTool) ? "Working" : $"Working · {LastTool}",
         AgentState.Waiting => "Waiting for you",
+        _ => "Done",
+    };
+
+    /// <summary>Compact status for the one-line pill: "Bash", "Waiting", "Working", "Done".</summary>
+    public string ShortStatus => State switch
+    {
+        AgentState.Working => string.IsNullOrEmpty(LastTool) ? "Working" : LastTool,
+        AgentState.Waiting => "Waiting",
         _ => "Done",
     };
 

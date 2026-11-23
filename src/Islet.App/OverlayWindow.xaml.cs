@@ -50,6 +50,11 @@ public partial class OverlayWindow : Window
     private const double FloatOffset = 14;
     private const double FloatDetachedAt = 0.6;
     private const double FloatResponse = 0.55;
+
+    /// <summary>A docked island dips this far while the pointer is on it, as a "you can touch me" cue.</summary>
+    private const double HoverOffset = 4;
+    private const double HoverResponse = 0.3;
+    private const double HoverDamping = 0.75;
     private const double FloatDamping = 0.68;
     private const double DockResponse = 0.5;
     private const double DockDamping = 0.9;
@@ -80,11 +85,11 @@ public partial class OverlayWindow : Window
         [OverlayView.Idle] = new ViewMetrics(200, 22, 11),
         [OverlayView.MediaCompact] = new ViewMetrics(320, 30, 15),
         [OverlayView.AgentCompact] = new ViewMetrics(320, 30, 15),
-        [OverlayView.AgentDone] = new ViewMetrics(360, 50, 25),
+        [OverlayView.AgentDone] = new ViewMetrics(320, 30, 15),
         [OverlayView.ClockCompact] = new ViewMetrics(320, 30, 15),
         [OverlayView.Notification] = new ViewMetrics(360, 50, 25),
         [OverlayView.MediaExpanded] = new ViewMetrics(420, 61, 24),
-        [OverlayView.Permission] = new ViewMetrics(460, 73, 26),
+        [OverlayView.Permission] = new ViewMetrics(460, 36, 18),
     };
 
     private readonly Dictionary<OverlayView, FrameworkElement> _contentByView;
@@ -133,7 +138,9 @@ public partial class OverlayWindow : Window
         {
             // The shape follows the offset, so it is fully docked exactly when it touches the edge.
             _slide.Y = value;
-            Pill.Detachment = Math.Clamp(value / (FloatOffset * FloatDetachedAt), 0, 1);
+            // The hover dip is not a detach: only travel beyond it counts.
+            Pill.Detachment = Math.Clamp(
+                (value - HoverOffset) / (FloatOffset * FloatDetachedAt - HoverOffset), 0, 1);
         });
         _offset.Snap(-(Pill.Height + RetractMargin));
         _springs.Settled += OnSpringsSettled;
@@ -229,7 +236,8 @@ public partial class OverlayWindow : Window
         FileLog.Write("Shown");
     }
 
-    private static double OffsetFor(OverlayView view) => Floats(view) ? FloatOffset : 0;
+    private double OffsetFor(OverlayView view) =>
+        Floats(view) ? FloatOffset : _pointerInside ? HoverOffset : 0;
 
     /// <summary>Toasts float: a Windows notification, and an agent (Claude, Codex) finishing.</summary>
     private static bool Floats(OverlayView view) => view is OverlayView.Notification or OverlayView.AgentDone;
@@ -432,6 +440,7 @@ public partial class OverlayWindow : Window
         _pointerInside = true;
         RestartHoverTimer(HoverEnterDelay);
         UpdateCardKeys();
+        NudgeForHover();
     }
 
     private void OnPillMouseLeave(object sender, MouseEventArgs e)
@@ -439,6 +448,18 @@ public partial class OverlayWindow : Window
         _pointerInside = false;
         RestartHoverTimer(HoverLeaveDelay);
         UpdateCardKeys();
+        NudgeForHover();
+    }
+
+    /// <summary>Immediate feedback, unlike the delayed expand: a docked island dips under the pointer.</summary>
+    private void NudgeForHover()
+    {
+        if (_retracted || Floats(ViewModel.View))
+        {
+            return;
+        }
+
+        _offset.AnimateTo(OffsetFor(ViewModel.View), HoverResponse, HoverDamping);
     }
 
     private void RestartHoverTimer(TimeSpan delay)
@@ -636,7 +657,7 @@ public partial class OverlayWindow : Window
         }
         else
         {
-            _offset.AnimateTo(0, DockResponse, DockDamping);
+            _offset.AnimateTo(OffsetFor(view), DockResponse, DockDamping);
         }
 
         foreach ((OverlayView candidate, FrameworkElement content) in _contentByView)

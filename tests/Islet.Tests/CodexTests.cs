@@ -208,6 +208,29 @@ public class CodexConfigAndPreviewTests
     public void Windows_command_is_bare_unless_the_path_has_spaces(string exe, string expected) =>
         Assert.Equal(expected, HookConfig.CommandWindowsFor(exe, "codex"));
 
+    [Theory]
+    [InlineData(@"C:\tools\Islet.Hook.exe", "/mnt/c/tools/Islet.Hook.exe")]
+    [InlineData("D:/Apps/Islet.Hook.exe", "/mnt/d/Apps/Islet.Hook.exe")]
+    [InlineData("/usr/bin/islet", "/usr/bin/islet")]
+    public void Wsl_path_maps_the_drive_to_mnt(string windows, string expected) =>
+        Assert.Equal(expected, HookConfig.ToWslPath(windows));
+
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("codex")]
+    public void Wsl_config_calls_the_exe_through_mnt_and_skips_commandWindows(string agent)
+    {
+        string json = HookConfig.Build(agent, @"C:\Program Files\Islet\Islet.Hook.exe", wsl: true)!;
+        using JsonDocument config = JsonDocument.Parse(json);
+
+        foreach (JsonProperty eventHooks in config.RootElement.GetProperty("hooks").EnumerateObject())
+        {
+            JsonElement hook = eventHooks.Value[0].GetProperty("hooks")[0];
+            Assert.Equal($"\"/mnt/c/Program Files/Islet/Islet.Hook.exe\" {agent}", hook.GetProperty("command").GetString());
+            Assert.False(hook.TryGetProperty("commandWindows", out _));
+        }
+    }
+
     [Fact]
     public void Apply_patch_shows_the_files_it_touches()
     {

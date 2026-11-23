@@ -26,12 +26,36 @@ internal static class HookConfig
     /// <summary>Gives the user time to walk back to the desk before the agent gives up.</summary>
     private const int PermissionTimeoutSeconds = 600;
 
-    public static string? Build(string agent, string exePath) => agent.ToLowerInvariant() switch
+    /// <param name="wsl">
+    /// For an agent running inside WSL: the command calls this Windows exe through its
+    /// <c>/mnt/c/...</c> path. WSL interop runs it as a Windows process, so it reaches Islet's pipe.
+    /// </param>
+    public static string? Build(string agent, string exePath, bool wsl = false)
     {
-        "claude" => BuildClaude(exePath),
-        "codex" => BuildCodex(exePath),
-        _ => null,
-    };
+        if (wsl)
+        {
+            exePath = ToWslPath(exePath);
+        }
+
+        return agent.ToLowerInvariant() switch
+        {
+            "claude" => BuildClaude(exePath),
+            "codex" => BuildCodex(exePath, wsl),
+            _ => null,
+        };
+    }
+
+    /// <summary>"C:\a\b.exe" becomes "/mnt/c/a/b.exe". Anything not drive-rooted is left alone.</summary>
+    public static string ToWslPath(string windowsPath)
+    {
+        if (windowsPath.Length >= 3 && char.IsAsciiLetter(windowsPath[0]) && windowsPath[1] == ':' &&
+            windowsPath[2] is '\\' or '/')
+        {
+            return $"/mnt/{char.ToLowerInvariant(windowsPath[0])}/{windowsPath[3..].Replace('\\', '/')}";
+        }
+
+        return windowsPath.Replace('\\', '/');
+    }
 
     /// <summary>
     /// Claude Code runs hook commands through Git Bash on Windows (PowerShell without it).
@@ -50,10 +74,12 @@ internal static class HookConfig
         return path.Any(char.IsWhiteSpace) ? $"\"{path}\" {agent}" : $"{path} {agent}";
     }
 
-    private static string BuildCodex(string exePath)
+    private static string BuildCodex(string exePath, bool wsl)
     {
         string command = CommandFor(exePath, "codex");
-        string commandWindows = CommandWindowsFor(exePath, "codex");
+
+        // Codex inside WSL is a Linux process, so it never reads commandWindows.
+        string? commandWindows = wsl ? null : CommandWindowsFor(exePath, "codex");
 
         using var buffer = new MemoryStream();
         using (var json = new Utf8JsonWriter(buffer, JsonOptions))
@@ -75,7 +101,7 @@ internal static class HookConfig
     }
 
     private static void WriteCodexEvent(
-        Utf8JsonWriter json, string eventName, string command, string commandWindows, int timeoutSeconds)
+        Utf8JsonWriter json, string eventName, string command, string? commandWindows, int timeoutSeconds)
     {
         json.WriteStartArray(eventName);
         json.WriteStartObject();
@@ -83,7 +109,11 @@ internal static class HookConfig
         json.WriteStartObject();
         json.WriteString("type", "command");
         json.WriteString("command", command);
-        json.WriteString("commandWindows", commandWindows);
+        if (commandWindows is not null)
+        {
+            json.WriteString("commandWindows", commandWindows);
+        }
+
         json.WriteNumber("timeout", timeoutSeconds);
         json.WriteEndObject();
         json.WriteEndArray();
